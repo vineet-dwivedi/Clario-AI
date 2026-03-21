@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { register } from "../controllers/auth.controller.js";
-import { registerValidator } from "../validators/auth.validator.js";
+import { register ,login} from "../controllers/auth.controller.js";
+import { registerValidator ,loginValidator} from "../validators/auth.validator.js";
+import { verifyEmail } from "../controllers/auth.controller.js";
 
 const authRouter = Router();
 
@@ -11,5 +12,16 @@ const authRouter = Router();
  * @body { username, email, password }
  */
 authRouter.post("/register", registerValidator, register);
+
+/**
+ * @route POST /api/auth/login
+ * @desc Login a user and return JWT
+ * @access Public
+ * @body { email, password }
+ */
+authRouter.post("/login", loginValidator, login);
+
+authRouter.get("/verify-email",verifyEmail);
+
 
 export default authRouter;

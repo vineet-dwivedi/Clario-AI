@@ -2,49 +2,150 @@ import userModel from "../models/user.model.js";
 import jwt from "jsonwebtoken";
 import { sendEmail } from "../services/mail.service.js";
 
-
 export async function register(req, res) {
+    try {
+        const { username, email, password } = req.body;
 
-    const { username, email, password } = req.body;
+        // 1. Check if user already exists
+        const isUserAlreadyExists = await userModel.findOne({
+            $or: [{ email }, { username }]
+        });
 
-    const isUserAlreadyExists = await userModel.findOne({
-        $or: [ { email }, { username } ]
-    })
+        if (isUserAlreadyExists) {
+            return res.status(400).json({
+                message: "User with this email or username already exists",
+                success: false
+            });
+        }
 
-    if (isUserAlreadyExists) {
+        // 2. Create user first
+        const user = await userModel.create({ username, email, password });
+
+        // 3. Generate token (AFTER user exists OR directly use email)
+        const emailVerificationToken = jwt.sign(
+            { email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: "1d" }
+        );
+
+        // 4. Send email
+        try {
+            await sendEmail({
+                to: email,
+                subject: "Welcome to Clario-AI!",
+                html: `
+                    <p>Hi ${username},</p>
+                    <p>Thank you for registering at <strong>Clario</strong>. We're excited to have you on board!</p>
+                    <p>Please verify your email address by clicking the link below:</p>
+                    <a href="http://localhost:5000/api/auth/verify-email?token=${emailVerificationToken}">
+                        Verify Email
+                    </a>
+                    <p>If you didn't create an account, please ignore this email.</p>
+                    <p>Best regards,<br>The Clario Team</p>
+                `
+            });
+        } catch (error) {
+            console.error("Welcome email could not be sent:", error?.message || error);
+        }
+
+        // 5. Response
+        return res.status(201).json({
+            message: "User registered successfully",
+            success: true,
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email
+            }
+        });
+
+    } catch (error) {
+        console.error("Register error:", error);
+        return res.status(500).json({
+            message: "Internal server error",
+            success: false
+        });
+    }
+}
+
+export async function verifyEmail(req,res){
+    const { token } = req.query;
+
+    try{
+        const decoded = jwt.verify(token,process.env.JWT_SECRET);
+
+    
+    const user = await userModel.findOne({email: decoded.email });
+
+    if(!user){
         return res.status(400).json({
-            message: "User with this email or username already exists",
+            message: "Invalid token",
             success: false,
-            err: "User already exists"
+            err: "User not found"
         })
     }
 
-    const user = await userModel.create({ username, email, password })
+    user.verified = true;
+    await user.save();
 
-    try {
-        await sendEmail({
-            to: email,
-            subject: "Welcome to Clario-AI!",
-            html: `
-                    <p>Hi ${username},</p>
-                    <p>Thank you for registering at <strong>Clario</strong>. We're excited to have you on board!</p>
-                    <p>Best regards,<br>The Clario Team</p>
-            `
-        });
-    } catch (error) {
-        console.error("Welcome email could not be sent:", error?.message || error);
+    return res.send(`
+    <h1>Email Verified Successfully</h1>
+    <p>Your email has been verified. You can now log in to your account.</p>
+    <a href="http://localhost:3000/login">Go to Login</a>
+`);
+}catch(err){
+        return res.status(400).json({
+            message: "Invalid or expired token",
+            success: false,
+            err: err.message
+        })
+    }
+}
+
+export async function login(req,res){
+    const { email, password } = req.body;
+
+    const user = await userModel.findOne({ email })
+
+    if(!user){
+        return res.status(400).json({
+            message: "Invalid email or password",
+            success: false,
+            err: "User not found"
+        })
     }
 
-    res.status(201).json({
-        message: "User registered successfully",
+    const isPasswordMatch = await user.comparePassword(password);
+
+    if(!isPasswordMatch){
+        return res.status(400).json({
+            message: "Invalid email or password",
+            success: false,
+            err: "Incorrect password"
+        })
+    }
+
+    if(!user.verified){
+        return res.status(400).json({
+            message: "Please verify your email before logging in",
+            success: false,
+            err: "Email not verified"
+        })
+    }
+
+    const token = jwt.sign({
+        id: user._id,
+        username: user.username,
+    }, process.env.JWT_SECRET, {expiresIn: '7d'})
+
+    res.cookie("token", token)
+    res.status(200).json({
+        message: "Login successful",
         success: true,
         user: {
             id: user._id,
-            username: user.username,
+            userrname: user.username,
             email: user.email
         }
-    });
-
-
-
+    })
 }
