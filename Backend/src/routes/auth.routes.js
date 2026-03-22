@@ -22,6 +22,12 @@ authRouter.post("/register", registerValidator, register);
  */
 authRouter.post("/login", loginValidator, login);
 
+/**
+ * @route GET /api/auth/getme
+ * @desc Give info about user
+ * @access Public
+ */
+
 authRouter.get("/verify-email",verifyEmail);
 
 authRouter.get("/get-me", authUser, getme)
