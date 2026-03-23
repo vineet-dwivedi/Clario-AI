@@ -11,11 +11,12 @@ initSocket(httpServer);
 
 // Start-up sequence: connect to MongoDB first, then let Express begin serving requests.
 connectToDB()
+    .then(() => {
+        httpServer.listen(PORT, () => {
+            console.log(`Server running on port ${PORT}`);
+        });
+    })
     .catch((err) => {
         console.error("MongoDB connection failed:", err);
         process.exit(1);
     });
-
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
