@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useSelector } from 'react-redux'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import AuthCard from '../components/AuthCard'
 import { LockIcon, MailIcon } from '../components/AuthIcons'
@@ -9,6 +9,7 @@ import { useAuth } from '../hook/useAuth'
 // Login page owns only local form state. API and Redux details stay inside useAuth.
 const Login = () => {
   const location = useLocation()
+  const navigate = useNavigate()
   const { handleLogin } = useAuth()
   const { error, loading, user } = useSelector((state) => state.auth)
   const [formData, setFormData] = useState({
@@ -61,9 +62,8 @@ const Login = () => {
       password: formData.password,
     })
 
-    // Successful register redirects also land here with a friendly message.
     if (data?.success) {
-      setSuccessMessage(`Welcome back, ${data.user?.username ?? data.user?.userrname ?? 'user'}!`)
+      navigate('/', { replace: true })
     }
   }
 
