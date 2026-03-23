@@ -5,16 +5,22 @@ import { ArrowRightIcon, GoogleIcon, SparkleIcon } from './AuthIcons'
 
 const AuthCard = ({
   auxiliary,
+  disabled,
   fields,
   footerLinkLabel,
   footerLinkTo,
   footerText,
+  onFieldChange,
+  onSubmit,
+  statusMessage,
+  statusTone = 'info',
   submitLabel,
   subtitle,
   title,
 }) => {
   const handleSubmit = (event) => {
     event.preventDefault()
+    onSubmit?.(event)
   }
 
   return (
@@ -29,13 +35,20 @@ const AuthCard = ({
           <p className="auth-card__subtitle">{subtitle}</p>
         </header>
 
+        {statusMessage ? (
+          <p className={`auth-card__status auth-card__status--${statusTone}`} role="status">
+            {statusMessage}
+          </p>
+        ) : null}
+
         <form className="auth-form" onSubmit={handleSubmit}>
           <div className="auth-form__fields">
             {fields.map((field) => {
               const FieldIcon = field.icon
+              const fieldClassName = field.disabled || disabled ? 'auth-field auth-field--disabled' : 'auth-field'
 
               return (
-                <label className="auth-field" htmlFor={field.id} key={field.id}>
+                <label className={fieldClassName} htmlFor={field.id} key={field.id}>
                   <span className="sr-only">{field.label}</span>
                   <span className="auth-field__icon" aria-hidden="true">
                     <FieldIcon className="auth-icon" />
@@ -43,10 +56,14 @@ const AuthCard = ({
                   <input
                     autoComplete={field.autoComplete}
                     className="auth-field__input"
+                    disabled={field.disabled || disabled}
                     id={field.id}
                     name={field.name}
+                    onChange={onFieldChange}
                     placeholder={field.placeholder}
+                    required={field.required ?? true}
                     type={field.type}
+                    value={field.value ?? ''}
                   />
                 </label>
               )
@@ -55,7 +72,7 @@ const AuthCard = ({
 
           <div className="auth-form__auxiliary">{auxiliary}</div>
 
-          <button className="auth-form__submit" type="submit">
+          <button className="auth-form__submit" disabled={disabled} type="submit">
             <span>{submitLabel}</span>
             <ArrowRightIcon className="auth-form__submit-icon" />
           </button>
