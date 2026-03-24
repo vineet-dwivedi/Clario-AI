@@ -1,3 +1,6 @@
+import mongoose from "mongoose";
+import chatModel from "../models/chat.model.js";
+import messageModel from "../models/message.model.js";
 import {
     AiServiceError,
     generateChatReply,
@@ -5,19 +8,106 @@ import {
     streamChatReply
 } from "../services/ai.service.js";
 
-function getChatRequestOptions(req) {
-    const { message, model } = req.body;
+/**
+ * Chat controller.
+ *
+ * Responsibilities:
+ * - load or create a chat for the logged-in user
+ * - read previous messages for follow-up context
+ * - save the user's message
+ * - get the AI response
+ * - save the AI response
+ * - return a small JSON response or SSE stream
+ */
 
-    return {
-        message,
-        model
-    };
-}
+const DEFAULT_CHAT_TITLE = "New Chat";
 
-function writeSseEvent(res, event, data) {
+const getChatRequestOptions = (req) => {
+    const { message, chatId } = req.body;
+    return { message, chatId };
+};
+
+const requireUserId = (req) => {
+    const userId = req.user?.id;
+
+    if (!userId) {
+        throw new AiServiceError("Unauthorized", 401);
+    }
+
+    return userId;
+};
+
+const requireMessage = (message) => {
+    const trimmedMessage = message?.trim();
+
+    if (!trimmedMessage) {
+        throw new AiServiceError("Message is required.", 400);
+    }
+
+    return trimmedMessage;
+};
+
+const formatChat = (chat) => ({
+    id: String(chat._id),
+    title: chat.title
+});
+
+const formatMessage = (message) => ({
+    id: String(message._id),
+    role: message.role,
+    content: message.content,
+    createdAt: message.createdAt
+});
+
+const writeSseEvent = (res, event, data) => {
     res.write(`event: ${event}\n`);
     res.write(`data: ${JSON.stringify(data)}\n\n`);
+};
+
+async function findOrCreateChat(userId, chatId) {
+    if (!chatId) {
+        return chatModel.create({ user: userId });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(chatId)) {
+        throw new AiServiceError("Invalid chat id.", 400);
+    }
+
+    const chat = await chatModel.findOne({ _id: chatId, user: userId });
+
+    if (!chat) {
+        throw new AiServiceError("Chat not found.", 404);
+    }
+
+    return chat;
 }
+
+async function setChatTitle(chat, title) {
+    if (!title?.trim() || chat.title !== DEFAULT_CHAT_TITLE) {
+        return chat;
+    }
+
+    chat.title = title.trim();
+    await chat.save();
+
+    return chat;
+}
+
+const saveMessage = (chatId, role, content) =>
+    messageModel.create({ chat: chatId, role, content });
+
+const getChatHistory = async (chatId) =>
+    (
+        await messageModel
+            .find({ chat: chatId })
+            .sort({ createdAt: -1 })
+            .limit(20)
+            .select("role content")
+            .lean()
+    ).reverse();
+
+const getErrorStatus = (error) =>
+    error instanceof AiServiceError ? error.statusCode : 500;
 
 export async function getModels(req, res) {
     return res.status(200).json({
@@ -27,23 +117,54 @@ export async function getModels(req, res) {
     });
 }
 
+export async function sendMessage(req, res) {
+    try {
+        const userId = requireUserId(req);
+        const { chatId, message } = getChatRequestOptions(req);
+        const content = requireMessage(message);
+        const chat = await findOrCreateChat(userId, chatId);
+        const history = await getChatHistory(chat._id);
+        const userMessage = await saveMessage(chat._id, "user", content);
+        const aiReply = await generateChatReply({ message: content, history });
+
+        await setChatTitle(chat, aiReply.title);
+
+        const aiMessage = await saveMessage(chat._id, "ai", aiReply.text);
+
+        return res.status(200).json({
+            success: true,
+            message: "AI response generated successfully",
+            data: {
+                chat: formatChat(chat),
+                model: aiReply.model,
+                userMessage: formatMessage(userMessage),
+                aiMessage: formatMessage(aiMessage)
+            }
+        });
+    } catch (error) {
+        console.error("AI chat error:", error);
+
+        return res.status(getErrorStatus(error)).json({
+            success: false,
+            message: error.message || "Failed to generate AI response.",
+            data: null
+        });
+    }
+}
+
 export async function sendStreamMessage(req, res) {
     let handleClose;
 
     try {
-        const requestOptions = getChatRequestOptions(req);
-
-        if (!requestOptions.message?.trim()) {
-            return res.status(400).json({
-                success: false,
-                message: "Message is required.",
-                data: null
-            });
-        }
-
+        const userId = requireUserId(req);
+        const { chatId, message } = getChatRequestOptions(req);
+        const content = requireMessage(message);
+        const chat = await findOrCreateChat(userId, chatId);
+        const history = await getChatHistory(chat._id);
+        const userMessage = await saveMessage(chat._id, "user", content);
         const abortController = new AbortController();
-        handleClose = () => abortController.abort();
 
+        handleClose = () => abortController.abort();
         req.on("close", handleClose);
 
         res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
@@ -53,17 +174,38 @@ export async function sendStreamMessage(req, res) {
         res.flushHeaders?.();
 
         for await (const event of streamChatReply({
-            ...requestOptions,
+            message: content,
+            history,
             signal: abortController.signal
         })) {
+            if (event.type === "meta") {
+                await setChatTitle(chat, event.data.title);
+                event.data = {
+                    ...event.data,
+                    chat: formatChat(chat),
+                    userMessage: formatMessage(userMessage)
+                };
+            }
+
+            if (event.type === "done") {
+                await setChatTitle(chat, event.data.title);
+
+                const aiMessage = await saveMessage(chat._id, "ai", event.data.text);
+
+                event.data = {
+                    ...event.data,
+                    chat: formatChat(chat),
+                    userMessage: formatMessage(userMessage),
+                    aiMessage: formatMessage(aiMessage)
+                };
+            }
+
             if (res.writableEnded || res.destroyed) {
                 break;
             }
 
             writeSseEvent(res, event.type, event.data);
         }
-
-        req.off("close", handleClose);
 
         if (!res.writableEnded) {
             res.end();
@@ -82,11 +224,7 @@ export async function sendStreamMessage(req, res) {
             return;
         }
 
-        const statusCode = error instanceof AiServiceError
-            ? error.statusCode
-            : 500;
-
-        return res.status(statusCode).json({
+        return res.status(getErrorStatus(error)).json({
             success: false,
             message: error.message || "Failed to generate AI response.",
             data: null
@@ -95,44 +233,5 @@ export async function sendStreamMessage(req, res) {
         if (handleClose) {
             req.off("close", handleClose);
         }
-    }
-}
-
-export async function sendMessage(req, res) {
-    try {
-        const requestOptions = getChatRequestOptions(req);
-
-        if (!requestOptions.message?.trim()) {
-            return res.status(400).json({
-                success: false,
-                message: "Message is required.",
-                data: null
-            });
-        }
-
-        const response = await generateChatReply(requestOptions);
-
-        return res.status(200).json({
-            success: true,
-            message: "AI response generated successfully",
-            data: {
-                model: response.model,
-                text: response.text,
-                fallbackUsed: response.fallbackUsed,
-                fallbackFrom: response.fallbackFrom
-            }
-        });
-    } catch (error) {
-        console.error("AI chat error:", error);
-
-        const statusCode = error instanceof AiServiceError
-            ? error.statusCode
-            : 500;
-
-        return res.status(statusCode).json({
-            success: false,
-            message: error.message || "Failed to generate AI response.",
-            data: null
-        });
     }
 }

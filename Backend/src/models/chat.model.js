@@ -1,5 +1,9 @@
 import mongoose from 'mongoose';
 
+/**
+ * One chat thread owned by one user.
+ * The title is generated from the first user message.
+ */
 const chatSchema = new mongoose.Schema(
     {
         user: {

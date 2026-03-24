@@ -1,5 +1,9 @@
 import mongoose from 'mongoose';
 
+/**
+ * One stored message inside a chat.
+ * `role` tells whether the content came from the user or the AI.
+ */
 const messageSchema = new mongoose.Schema(
     {
         chat: {
