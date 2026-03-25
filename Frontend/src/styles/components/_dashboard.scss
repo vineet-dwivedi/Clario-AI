@@ -128,7 +128,8 @@
 .dashboard-sidebar__new,
 .dashboard-thread-link,
 .dashboard-source-card,
-.dashboard-sidebar__profile {
+.dashboard-sidebar__profile,
+.dashboard-sidebar__logout {
   transition:
     transform $duration-base $ease-fluid,
     color $duration-base $ease-fluid,
@@ -334,7 +335,8 @@
 .dashboard-suggestion__icon,
 .dashboard-thread-link__icon,
 .dashboard-thread__eyebrow-icon,
-.dashboard-sidebar__new-icon {
+.dashboard-sidebar__new-icon,
+.dashboard-sidebar__logout-icon {
   width: 1rem;
   height: 1rem;
   flex-shrink: 0;
@@ -449,8 +451,20 @@
   backdrop-filter: blur(18px);
 }
 
-.dashboard-sidebar__brand {
+.dashboard-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-3;
   margin-bottom: clamp($space-6, 3vw, $space-8);
+}
+
+.dashboard-sidebar__brand {
+  min-width: 0;
+}
+
+.dashboard-sidebar__close {
+  flex-shrink: 0;
 }
 
 .dashboard-sidebar__new {
@@ -489,6 +503,8 @@
 .dashboard-sidebar__threads {
   display: grid;
   gap: $space-2;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .dashboard-thread-link {
@@ -496,6 +512,8 @@
   display: flex;
   align-items: center;
   gap: $space-3;
+  min-width: 0;
+  max-width: 100%;
   width: 100%;
   padding: 0 $space-3;
   border: 1px solid transparent;
@@ -503,6 +521,7 @@
   background: transparent;
   color: var(--text-secondary);
   text-align: left;
+  overflow: hidden;
 
   &:hover {
     transform: translateX(2px);
@@ -518,12 +537,17 @@
 }
 
 .dashboard-thread-link__label {
+  flex: 1;
+  min-width: 0;
+  display: block;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .dashboard-sidebar__footer {
+  display: grid;
+  gap: $space-3;
   padding-top: $space-5;
   border-top: 1px solid var(--divider);
 }
@@ -563,6 +587,30 @@
 
 .dashboard-sidebar__profile-name {
   font-size: 1.04rem;
+}
+
+.dashboard-sidebar__logout {
+  min-height: 3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: $space-2;
+  width: 100%;
+  border: 1px solid var(--field-border);
+  border-radius: 1rem;
+  background: var(--control-bg);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-soft);
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: rgba(var(--accent-rgb), 0.24);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
 }
 
 .dashboard-thread {

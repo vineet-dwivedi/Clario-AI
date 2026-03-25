@@ -34,3 +34,12 @@ export async function getme() {
 
   return response.data
 }
+
+/**
+ * Ends the current authenticated session on the backend.
+ */
+export async function logout() {
+  const response = await api.post('/api/auth/logout')
+
+  return response.data
+}

@@ -678,3 +678,14 @@
     transition: none;
   }
 }
+
+.route-gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: $space-6;
+  color: var(--text-secondary);
+  background: var(--bg-base);
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+}

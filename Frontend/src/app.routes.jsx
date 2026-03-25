@@ -6,11 +6,16 @@ import Login from './features/auth/pages/Login'
 import Register from './features/auth/pages/Register'
 import Dashboard from './features/chat/pages/Dashboard'
 import Protected from './features/auth/components/Protected'
+import PublicOnly from './features/auth/components/PublicOnly'
 
 // Central route table for the current auth experience.
 export const router = createBrowserRouter([
   {
-    element: <AuthLayout />,
+    element: (
+      <PublicOnly>
+        <AuthLayout />
+      </PublicOnly>
+    ),
     children: [
       {
         path: '/login',

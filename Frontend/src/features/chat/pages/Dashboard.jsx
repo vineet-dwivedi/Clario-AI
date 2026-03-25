@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 
 import { MoonIcon, SparkleIcon, SunIcon } from '../../auth/components/AuthIcons'
+import { useAuth } from '../../auth/hook/useAuth'
 import { useChat } from '../hook/useChat'
 
 const STORAGE_KEY = 'perplexity-auth-theme'
@@ -124,7 +126,9 @@ const createPreviewThread = (prompt) => ({
 })
 
 function Dashboard() {
-  const { user } = useSelector((state) => state.auth)
+  const navigate = useNavigate()
+  const { handleLogout } = useAuth()
+  const { loading, user } = useSelector((state) => state.auth)
   const [draft, setDraft] = useState('')
   const [theme, setTheme] = useState(getInitialTheme)
   const [isThemeTransitioning, setIsThemeTransitioning] = useState(false)
@@ -180,6 +184,10 @@ function Dashboard() {
     setIsWorkspaceOpen((current) => !current)
   }
 
+  const handleWorkspaceClose = () => {
+    setIsWorkspaceOpen(false)
+  }
+
   const handleThreadSelect = (threadId) => {
     setActiveThreadId(threadId)
     setIsWorkspaceOpen(true)
@@ -207,6 +215,11 @@ function Dashboard() {
     setDraft('')
   }
 
+  const handleLogoutClick = async () => {
+    await handleLogout()
+    navigate('/login', { replace: true })
+  }
+
   return (
     <div
       className={`dashboard-scene${isThemeTransitioning ? ' dashboard-scene--theme-shift' : ''}${
@@ -218,11 +231,22 @@ function Dashboard() {
       {isWorkspaceOpen ? (
         <div className="dashboard-workspace">
           <aside className="dashboard-sidebar">
-            <div className="dashboard-sidebar__brand">
-              <span className="dashboard-brand__badge" aria-hidden="true">
-                <SparkleIcon className="dashboard-brand__icon" />
-              </span>
-              <span className="dashboard-brand__name">Lumina</span>
+            <div className="dashboard-sidebar__header">
+              <div className="dashboard-sidebar__brand">
+                <span className="dashboard-brand__badge" aria-hidden="true">
+                  <SparkleIcon className="dashboard-brand__icon" />
+                </span>
+                <span className="dashboard-brand__name">Lumina</span>
+              </div>
+
+              <button
+                aria-label="Close menu"
+                className="dashboard-sidebar__close dashboard-topbar__circle"
+                onClick={handleWorkspaceClose}
+                type="button"
+              >
+                <CloseIcon className="dashboard-topbar__icon" />
+              </button>
             </div>
 
             <button className="dashboard-sidebar__new" onClick={handleStartNewThread} type="button">
@@ -253,6 +277,16 @@ function Dashboard() {
                 <span className="dashboard-sidebar__profile-avatar">{avatarLabel}</span>
                 <span className="dashboard-sidebar__profile-name">{username}</span>
               </button>
+
+              <button
+                className="dashboard-sidebar__logout"
+                disabled={loading}
+                onClick={handleLogoutClick}
+                type="button"
+              >
+                <LogoutIcon className="dashboard-sidebar__logout-icon" />
+                <span>{loading ? 'Logging out...' : 'Logout'}</span>
+              </button>
             </div>
           </aside>
 
@@ -262,12 +296,12 @@ function Dashboard() {
                 <div className="dashboard-thread__mobilebar">
                   <button
                     aria-expanded={isWorkspaceOpen}
-                    aria-label="Return to landing page"
+                    aria-label="Close menu"
                     className="dashboard-topbar__circle"
-                    onClick={handleMenuToggle}
+                    onClick={handleWorkspaceClose}
                     type="button"
                   >
-                    <MenuIcon className="dashboard-topbar__icon" />
+                    <CloseIcon className="dashboard-topbar__icon" />
                   </button>
 
                   <span className="dashboard-thread__mobilebrand">Lumina</span>
@@ -558,10 +592,29 @@ function PlusIcon({ className }) {
   )
 }
 
+function CloseIcon({ className }) {
+  return (
+    <svg aria-hidden="true" className={className} {...iconProps}>
+      <path d="M6 6L18 18" />
+      <path d="M18 6L6 18" />
+    </svg>
+  )
+}
+
 function ChatIcon({ className }) {
   return (
     <svg aria-hidden="true" className={className} {...iconProps}>
       <path d="M6.5 6.5H17.5C18.05 6.5 18.5 6.95 18.5 7.5V14.5C18.5 15.05 18.05 15.5 17.5 15.5H10.2L6.5 18.5V7.5C6.5 6.95 6.95 6.5 7.5 6.5" />
+    </svg>
+  )
+}
+
+function LogoutIcon({ className }) {
+  return (
+    <svg aria-hidden="true" className={className} {...iconProps}>
+      <path d="M10 5.5H7.5C6.95 5.5 6.5 5.95 6.5 6.5V17.5C6.5 18.05 6.95 18.5 7.5 18.5H10" />
+      <path d="M13 8.5L17 12L13 15.5" />
+      <path d="M10 12H17" />
     </svg>
   )
 }

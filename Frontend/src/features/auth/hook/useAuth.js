@@ -1,6 +1,6 @@
 import { useDispatch } from 'react-redux'
-import { login, register, getme } from '../service/auth.api'
-import { setUser, setError, setLoading } from '../auth.slice'
+import { login, register, getme, logout } from '../service/auth.api'
+import { setUser, setError, setInitialized, setLoading } from '../auth.slice'
 
 // Keeps the UI layer simple by turning backend responses into Redux state updates.
 /**
@@ -12,6 +12,8 @@ import { setUser, setError, setLoading } from '../auth.slice'
 const getApiErrorMessage = (error, fallbackMessage) => {
   return error.response?.data?.message || error.response?.data?.errors?.[0]?.msg || fallbackMessage
 }
+
+const isUnauthorizedError = (error) => error?.response?.status === 401
 
 /**
  * Login currently returns `userrname` while other endpoints use `username`.
@@ -45,6 +47,7 @@ export function useAuth() {
       dispatch(setLoading(true))
       dispatch(setError(null))
       const data = await register({ email, username, password })
+      dispatch(setInitialized(true))
       return data
     } catch (error) {
       dispatch(setError(getApiErrorMessage(error, 'Registration failed')))
@@ -64,6 +67,7 @@ export function useAuth() {
       dispatch(setError(null))
       const data = await login({ email, password })
       dispatch(setUser(normalizeUser(data.user)))
+      dispatch(setInitialized(true))
       return data
     } catch (error) {
       dispatch(setError(getApiErrorMessage(error, 'Login failed')))
@@ -84,12 +88,40 @@ export function useAuth() {
       dispatch(setUser(normalizeUser(data.user)))
       return data
     } catch (error) {
-      dispatch(setError(getApiErrorMessage(error, 'Failed to fetch user data')))
+      dispatch(setUser(null))
+
+      if (!isUnauthorizedError(error)) {
+        dispatch(setError(getApiErrorMessage(error, 'Failed to fetch user data')))
+      }
+
       return null
     } finally {
       dispatch(setLoading(false))
+      dispatch(setInitialized(true))
     }
   }
 
-  return { handleGetme, handleLogin, handleRegister }
+  /**
+   * Clears the backend session cookie and resets auth state locally.
+   */
+  async function handleLogout() {
+    try {
+      dispatch(setLoading(true))
+      dispatch(setError(null))
+      await logout()
+      return true
+    } catch (error) {
+      if (!isUnauthorizedError(error)) {
+        dispatch(setError(getApiErrorMessage(error, 'Logout failed')))
+      }
+
+      return false
+    } finally {
+      dispatch(setUser(null))
+      dispatch(setLoading(false))
+      dispatch(setInitialized(true))
+    }
+  }
+
+  return { handleGetme, handleLogin, handleLogout, handleRegister }
 }

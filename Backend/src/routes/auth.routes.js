@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { register ,login ,getme} from "../controllers/auth.controller.js";
+import { register ,login ,getme, logout } from "../controllers/auth.controller.js";
 import { registerValidator ,loginValidator} from "../validators/auth.validator.js";
 import { verifyEmail } from "../controllers/auth.controller.js";
 import { authUser } from "../middleware/auth.middleware.js";
@@ -33,5 +33,12 @@ authRouter.get("/verify-email",verifyEmail);
  * @access Private
  */
 authRouter.get("/get-me", authUser, getme)
+
+/**
+ * @route POST /api/auth/logout
+ * @desc Clear the current auth cookie
+ * @access Private
+ */
+authRouter.post("/logout", authUser, logout)
 
 export default authRouter;
