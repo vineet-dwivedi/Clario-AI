@@ -130,10 +130,16 @@ export async function streamMessage({ chatId, message, onEvent, signal }) {
         continue
       }
 
+      const parsedData = JSON.parse(dataLine)
+
       onEvent?.({
         event: currentEvent,
-        data: JSON.parse(dataLine),
+        data: parsedData,
       })
+
+      if (currentEvent === 'error') {
+        throw new Error(parsedData?.message || 'Streaming failed.')
+      }
 
       currentEvent = 'message'
     }

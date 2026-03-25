@@ -240,15 +240,24 @@ export async function sendMessage(req, res) {
 
 export async function sendStreamMessage(req, res) {
     let handleClose;
+    let abortController;
+    let chat;
+    let history = [];
+    let userMessage;
+    let content = "";
+    let shouldGenerateTitle = false;
+    let sentMeta = false;
+    let sentToken = false;
 
     try {
         const userId = requireUserId(req);
         const { chatId, message } = getChatRequestOptions(req);
-        const content = requireMessage(message);
-        const chat = await findOrCreateChat(userId, chatId);
-        const history = await getChatHistory(chat._id);
-        const userMessage = await saveMessage(chat._id, "user", content);
-        const abortController = new AbortController();
+        content = requireMessage(message);
+        chat = await findOrCreateChat(userId, chatId);
+        history = await getChatHistory(chat._id);
+        shouldGenerateTitle = chat.title === DEFAULT_CHAT_TITLE;
+        userMessage = await saveMessage(chat._id, "user", content);
+        abortController = new AbortController();
 
         handleClose = () => abortController.abort();
         req.on("close", handleClose);
@@ -262,16 +271,24 @@ export async function sendStreamMessage(req, res) {
         for await (const event of streamChatReply({
             message: content,
             history,
-            generateTitle: chat.title === DEFAULT_CHAT_TITLE,
+            generateTitle: shouldGenerateTitle,
             signal: abortController.signal
         })) {
             if (event.type === "meta") {
+                sentMeta = true;
                 await setChatTitle(chat, event.data.title);
                 event.data = {
                     ...event.data,
-                    chat: formatChat(chat),
+                    chat: {
+                        ...formatChat(chat),
+                        title: event.data.title || (chat.title === DEFAULT_CHAT_TITLE ? "" : chat.title)
+                    },
                     userMessage: formatMessage(userMessage)
                 };
+            }
+
+            if (event.type === "token") {
+                sentToken = true;
             }
 
             if (event.type === "done") {
@@ -300,6 +317,62 @@ export async function sendStreamMessage(req, res) {
         }
     } catch (error) {
         console.error("AI chat error:", error);
+
+        const canFallbackToJson =
+            res.headersSent &&
+            !res.writableEnded &&
+            !res.destroyed &&
+            !sentToken &&
+            !abortController?.signal.aborted &&
+            chat &&
+            userMessage;
+
+        if (canFallbackToJson) {
+            try {
+                const aiReply = await generateChatReply({
+                    message: content,
+                    history,
+                    generateTitle: shouldGenerateTitle
+                });
+
+                await setChatTitle(chat, aiReply.title);
+
+                const aiMessage = await saveMessage(chat._id, "ai", aiReply.text);
+                await touchChat(chat._id);
+
+                if (!sentMeta) {
+                    writeSseEvent(res, "meta", {
+                        provider: "nvidia",
+                        model: aiReply.model,
+                        title: null,
+                        fallbackUsed: true,
+                        fallbackFrom: "stream",
+                        chat: {
+                            ...formatChat(chat),
+                            title: ""
+                        },
+                        userMessage: formatMessage(userMessage)
+                    });
+                }
+
+                writeSseEvent(res, "done", {
+                    provider: "nvidia",
+                    model: aiReply.model,
+                    title: chat.title,
+                    text: aiReply.text,
+                    fallbackUsed: true,
+                    fallbackFrom: "stream",
+                    chat: formatChat(chat),
+                    userMessage: formatMessage(userMessage),
+                    aiMessage: formatMessage(aiMessage)
+                });
+                res.end();
+                return;
+            } catch (fallbackError) {
+                console.error("AI stream fallback error:", fallbackError);
+                error = fallbackError;
+            }
+        }
 
         if (res.headersSent) {
             if (!res.writableEnded && !res.destroyed) {

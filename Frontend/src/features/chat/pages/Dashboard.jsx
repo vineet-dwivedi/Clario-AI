@@ -4,15 +4,16 @@ import { useNavigate } from 'react-router-dom'
 
 import { MoonIcon, SparkleIcon, SunIcon } from '../../auth/components/AuthIcons'
 import { useAuth } from '../../auth/hook/useAuth'
+import ChatMarkdown from '../components/ChatMarkdown'
 import {
   clearChatError,
   clearCurrentChat,
+  deleteChatThread,
   fetchChatMessages,
   fetchChats,
-  sendChatMessage,
   setCurrentChatId,
 } from '../chat.slice'
-import { useChat } from '../hook/useChat'
+import { streamMessage } from '../service/chat.api'
 
 const STORAGE_KEY = 'perplexity-auth-theme'
 
@@ -47,16 +48,18 @@ function Dashboard() {
   const navigate = useNavigate()
   const { handleLogout } = useAuth()
   const { loading: isAuthLoading, user } = useSelector((state) => state.auth)
-  const { chats, currentChatId, error, isLoading, isSending, messagesByChatId } = useSelector((state) => state.chat)
+  const { chats, currentChatId, error, isDeleting, isLoading, messagesByChatId } = useSelector((state) => state.chat)
   const [draft, setDraft] = useState('')
-  const [pendingPrompt, setPendingPrompt] = useState('')
+  const [deletingChatId, setDeletingChatId] = useState(null)
+  const [streamState, setStreamState] = useState(null)
+  const [streamError, setStreamError] = useState('')
+  const [pendingHydrationChatId, setPendingHydrationChatId] = useState(null)
   const [theme, setTheme] = useState(getInitialTheme)
   const [isThemeTransitioning, setIsThemeTransitioning] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const transitionTimeoutRef = useRef(null)
   const conversationEndRef = useRef(null)
-
-  useChat(Boolean(user))
+  const streamAbortRef = useRef(null)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -72,6 +75,8 @@ function Dashboard() {
 
   useEffect(() => {
     return () => {
+      streamAbortRef.current?.abort()
+
       if (transitionTimeoutRef.current) {
         window.clearTimeout(transitionTimeoutRef.current)
       }
@@ -80,14 +85,89 @@ function Dashboard() {
 
   const activeChat = chats.find((chat) => chat.id === currentChatId) || null
   const activeMessages = currentChatId ? messagesByChatId[currentChatId] || [] : []
-  const hasActiveThread = Boolean(currentChatId || pendingPrompt)
+  const isStreaming = Boolean(streamState?.isStreaming)
+  const hasActiveThread = Boolean(currentChatId || streamState)
   const username = user?.username?.trim() || 'Lumina User'
   const avatarLabel = username.slice(0, 2).toUpperCase()
   const nextTheme = theme === 'light' ? 'dark' : 'light'
+  const statusError = streamError || error
+  const threadTitle = activeChat?.title || streamState?.title || 'New Chat'
 
   useEffect(() => {
     conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [activeMessages, currentChatId, pendingPrompt, isSending])
+  }, [activeMessages, currentChatId, streamState?.aiText, streamState?.userMessage?.content])
+
+  useEffect(() => {
+    if (!streamState?.aiBuffer) {
+      if (streamState?.doneReceived && streamState.isStreaming) {
+        setStreamState((currentState) =>
+          currentState?.doneReceived && !currentState.aiBuffer
+            ? {
+                ...currentState,
+                isStreaming: false,
+              }
+            : currentState,
+        )
+      }
+
+      return undefined
+    }
+
+    const intervalId = window.setInterval(() => {
+      setStreamState((currentState) => {
+        if (!currentState?.aiBuffer) {
+          return currentState
+        }
+
+        const step = Math.max(1, Math.min(4, Math.ceil(currentState.aiBuffer.length / 28)))
+        const nextChunk = currentState.aiBuffer.slice(0, step)
+        const remainingBuffer = currentState.aiBuffer.slice(step)
+
+        return {
+          ...currentState,
+          aiText: `${currentState.aiText || ''}${nextChunk}`,
+          aiBuffer: remainingBuffer,
+          isStreaming: !(currentState.doneReceived && !remainingBuffer),
+        }
+      })
+    }, 16)
+
+    return () => window.clearInterval(intervalId)
+  }, [streamState?.aiBuffer, streamState?.doneReceived, streamState?.isStreaming])
+
+  useEffect(() => {
+    if (!pendingHydrationChatId) {
+      return undefined
+    }
+
+    if (streamState?.isStreaming || streamState?.aiBuffer) {
+      return undefined
+    }
+
+    let cancelled = false
+
+    const hydrateChat = async () => {
+      await dispatch(fetchChats())
+
+      if (cancelled) {
+        return
+      }
+
+      dispatch(setCurrentChatId(pendingHydrationChatId))
+      await dispatch(fetchChatMessages(pendingHydrationChatId))
+
+      if (!cancelled) {
+        setPendingHydrationChatId(null)
+        setStreamState(null)
+      }
+    }
+
+    hydrateChat()
+
+    return () => {
+      cancelled = true
+    }
+  }, [dispatch, pendingHydrationChatId, streamState?.aiBuffer, streamState?.isStreaming])
 
   const handleSuggestionClick = (label) => {
     setDraft(label)
@@ -116,9 +196,13 @@ function Dashboard() {
   }
 
   const handleThreadSelect = async (chatId) => {
+    streamAbortRef.current?.abort()
+    streamAbortRef.current = null
+    setPendingHydrationChatId(null)
     dispatch(setCurrentChatId(chatId))
     dispatch(clearChatError())
-    setPendingPrompt('')
+    setStreamError('')
+    setStreamState(null)
     setIsSidebarOpen(false)
 
     if (!messagesByChatId[chatId]) {
@@ -128,10 +212,46 @@ function Dashboard() {
 
   const handleStartNewThread = () => {
     setDraft('')
-    setPendingPrompt('')
+    setStreamError('')
+    setStreamState(null)
+    setPendingHydrationChatId(null)
+    streamAbortRef.current?.abort()
+    streamAbortRef.current = null
     dispatch(clearChatError())
     dispatch(clearCurrentChat())
     setIsSidebarOpen(false)
+  }
+
+  const handleDeleteChat = async (event, chatId) => {
+    event.stopPropagation()
+
+    if (!chatId || deletingChatId) {
+      return
+    }
+
+    const targetChat = chats.find((chat) => chat.id === chatId)
+    const shouldDelete = window.confirm(`Delete "${targetChat?.title || 'this chat'}"?`)
+
+    if (!shouldDelete) {
+      return
+    }
+
+    if (currentChatId === chatId || pendingHydrationChatId === chatId || streamState?.chat?.id === chatId) {
+      streamAbortRef.current?.abort()
+      streamAbortRef.current = null
+      setPendingHydrationChatId(null)
+      setStreamState(null)
+      setStreamError('')
+      dispatch(clearCurrentChat())
+    }
+
+    setDeletingChatId(chatId)
+
+    try {
+      await dispatch(deleteChatThread(chatId)).unwrap()
+    } finally {
+      setDeletingChatId(null)
+    }
   }
 
   const handleSubmit = async (event) => {
@@ -139,26 +259,126 @@ function Dashboard() {
 
     const prompt = draft.trim()
 
-    if (!prompt || isSending) {
+    if (!prompt || isStreaming) {
       return
     }
 
-    setPendingPrompt(prompt)
+    const abortController = new AbortController()
+    streamAbortRef.current?.abort()
+    streamAbortRef.current = abortController
+
+    let streamMeta = null
+    let streamDone = null
+
+    setStreamError('')
+    setStreamState({
+      chat: activeChat,
+      title: activeChat?.title || prompt,
+      userMessage: {
+        id: 'pending-user',
+        role: 'user',
+        content: prompt,
+        pending: true,
+      },
+      aiText: '',
+      aiBuffer: '',
+      doneReceived: false,
+      isStreaming: true,
+    })
     setDraft('')
     dispatch(clearChatError())
 
-    const result = await dispatch(
-      sendChatMessage({
+    try {
+      await streamMessage({
         chatId: currentChatId,
         message: prompt,
-      }),
-    )
+        signal: abortController.signal,
+        onEvent: ({ event, data }) => {
+          if (event === 'meta') {
+            streamMeta = data
 
-    if (sendChatMessage.rejected.match(result)) {
+            setStreamState((currentState) => ({
+              ...(currentState || {}),
+              chat: data.chat || currentState?.chat || null,
+              title: data.chat?.title || data.title || currentState?.title || prompt,
+              userMessage: data.userMessage || currentState?.userMessage || null,
+              aiText: currentState?.aiText || '',
+              aiBuffer: currentState?.aiBuffer || '',
+              doneReceived: currentState?.doneReceived || false,
+              isStreaming: true,
+            }))
+
+            if (data.chat?.id) {
+              dispatch(setCurrentChatId(data.chat.id))
+            }
+          }
+
+          if (event === 'token') {
+            setStreamState((currentState) => ({
+              ...(currentState || {}),
+              aiBuffer: `${currentState?.aiBuffer || ''}${data.text || ''}`,
+              isStreaming: true,
+            }))
+          }
+
+          if (event === 'done') {
+            streamDone = data
+
+            setStreamState((currentState) => {
+              const safeState = currentState || {}
+              const currentCombined = `${safeState.aiText || ''}${safeState.aiBuffer || ''}`
+              const finalText = data.text || currentCombined
+
+              if (!finalText.startsWith(currentCombined)) {
+                return {
+                  ...safeState,
+                  chat: data.chat || safeState.chat || null,
+                  title: data.chat?.title || data.title || safeState.title || prompt,
+                  userMessage: data.userMessage || safeState.userMessage || null,
+                  aiText: finalText,
+                  aiBuffer: '',
+                  doneReceived: true,
+                  isStreaming: false,
+                }
+              }
+
+              const tail = finalText.slice(currentCombined.length)
+
+              return {
+                ...safeState,
+                chat: data.chat || safeState.chat || null,
+                title: data.chat?.title || data.title || safeState.title || prompt,
+                userMessage: data.userMessage || safeState.userMessage || null,
+                aiBuffer: `${safeState.aiBuffer || ''}${tail}`,
+                doneReceived: true,
+                isStreaming: true,
+              }
+            })
+          }
+        },
+      })
+
+      const nextChatId = streamDone?.chat?.id || streamMeta?.chat?.id || currentChatId
+
+      if (nextChatId) {
+        setPendingHydrationChatId(nextChatId)
+      }
+    } catch (streamFailure) {
+      if (abortController.signal.aborted) {
+        setPendingHydrationChatId(null)
+        setStreamState(null)
+        return
+      }
+
       setDraft(prompt)
+      setStreamError(streamFailure.message || 'Failed to stream message.')
+      setPendingHydrationChatId(null)
+      setStreamState(null)
+    } finally {
+      if (streamAbortRef.current === abortController) {
+        streamAbortRef.current = null
+      }
     }
-
-    setPendingPrompt('')
   }
 
   const handleLogoutClick = async () => {
@@ -168,21 +388,16 @@ function Dashboard() {
 
   const visibleMessages = [...activeMessages]
 
-  if (pendingPrompt) {
-    visibleMessages.push({
-      id: 'pending-user',
-      role: 'user',
-      content: pendingPrompt,
-      pending: true,
-    })
+  if (streamState?.userMessage && !visibleMessages.some((message) => message.id === streamState.userMessage.id)) {
+    visibleMessages.push(streamState.userMessage)
   }
 
-  if (isSending) {
+  if (streamState?.aiText || isStreaming) {
     visibleMessages.push({
-      id: 'pending-ai',
+      id: 'streaming-ai',
       role: 'ai',
-      content: 'Thinking...',
-      pending: true,
+      content: streamState?.aiText || '',
+      pending: isStreaming,
     })
   }
 
@@ -236,15 +451,27 @@ function Dashboard() {
             {!isLoading && chats.length === 0 ? <p className="dashboard-sidebar__note">No chats yet.</p> : null}
 
             {chats.map((chat) => (
-              <button
-                className={`dashboard-thread-link${chat.id === currentChatId ? ' dashboard-thread-link--active' : ''}`}
-                key={chat.id}
-                onClick={() => handleThreadSelect(chat.id)}
-                type="button"
-              >
-                <ChatIcon className="dashboard-thread-link__icon" />
-                <span className="dashboard-thread-link__label">{chat.title}</span>
-              </button>
+              <div className="dashboard-thread-item" key={chat.id}>
+                <button
+                  className={`dashboard-thread-link${chat.id === currentChatId ? ' dashboard-thread-link--active' : ''}`}
+                  onClick={() => handleThreadSelect(chat.id)}
+                  type="button"
+                >
+                  <ChatIcon className="dashboard-thread-link__icon" />
+                  <span className="dashboard-thread-link__label">{chat.title}</span>
+                </button>
+
+                <button
+                  aria-label={`Delete ${chat.title}`}
+                  className="dashboard-thread-item__delete"
+                  disabled={isDeleting || deletingChatId === chat.id}
+                  onClick={(event) => handleDeleteChat(event, chat.id)}
+                  title="Delete chat"
+                  type="button"
+                >
+                  <TrashIcon className="dashboard-thread-item__delete-icon" />
+                </button>
+              </div>
             ))}
           </div>
         </div>
@@ -308,13 +535,13 @@ function Dashboard() {
             <div className="dashboard-thread__scroll">
               <div className="dashboard-thread__inner">
                 <div className="dashboard-thread__hero">
-                  <h1 className="dashboard-thread__title">{activeChat?.title || pendingPrompt || 'New Chat'}</h1>
+                  <h1 className="dashboard-thread__title">{threadTitle}</h1>
                   <p className="dashboard-thread__copy">
                     Ask follow-up questions in the same thread and the backend will keep the conversation grouped.
                   </p>
                 </div>
 
-                {error ? <p className="dashboard-thread__status dashboard-thread__status--error">{error}</p> : null}
+                {statusError ? <p className="dashboard-thread__status dashboard-thread__status--error">{statusError}</p> : null}
 
                 <div className="dashboard-conversation">
                   {visibleMessages.map((message) => (
@@ -326,7 +553,14 @@ function Dashboard() {
                         <span className="dashboard-message__role">{message.role === 'user' ? 'You' : 'Lumina'}</span>
                       </div>
 
-                      <p className="dashboard-message__content">{message.content}</p>
+                      {message.role === 'ai' ? (
+                        <div className="dashboard-message__content dashboard-message__content--ai">
+                          <ChatMarkdown content={message.content || (message.pending ? 'Thinking...' : '')} />
+                          {message.pending ? <span aria-hidden="true" className="dashboard-message__stream-caret" /> : null}
+                        </div>
+                      ) : (
+                        <p className="dashboard-message__content dashboard-message__content--user">{message.content}</p>
+                      )}
                     </article>
                   ))}
 
@@ -335,7 +569,7 @@ function Dashboard() {
               </div>
             </div>
 
-            <PromptComposer draft={draft} isSending={isSending} onChange={setDraft} onSubmit={handleSubmit} docked />
+            <PromptComposer draft={draft} isSending={isStreaming} onChange={setDraft} onSubmit={handleSubmit} docked />
           </main>
         </div>
       ) : (
@@ -379,9 +613,9 @@ function Dashboard() {
               </p>
             </section>
 
-            {error ? <p className="dashboard-thread__status dashboard-thread__status--error">{error}</p> : null}
+            {statusError ? <p className="dashboard-thread__status dashboard-thread__status--error">{statusError}</p> : null}
 
-            <PromptComposer draft={draft} isSending={isSending} onChange={setDraft} onSubmit={handleSubmit} />
+            <PromptComposer draft={draft} isSending={isStreaming} onChange={setDraft} onSubmit={handleSubmit} />
 
             <div className="dashboard-suggestions" aria-label="Suggested prompts">
               {suggestionPrompts.map(({ label, icon: Icon, tone }) => (
@@ -607,6 +841,18 @@ function LogoutIcon({ className }) {
       <path d="M10 5.5H7.5C6.95 5.5 6.5 5.95 6.5 6.5V17.5C6.5 18.05 6.95 18.5 7.5 18.5H10" />
       <path d="M13 8.5L17 12L13 15.5" />
       <path d="M10 12H17" />
+    </svg>
+  )
+}
+
+function TrashIcon({ className }) {
+  return (
+    <svg aria-hidden="true" className={className} {...iconProps}>
+      <path d="M5.5 7.5H18.5" />
+      <path d="M9.5 4.5H14.5" />
+      <path d="M8 7.5L8.7 18.1C8.77 19.02 9.53 19.75 10.45 19.75H13.55C14.47 19.75 15.23 19.02 15.3 18.1L16 7.5" />
+      <path d="M10 10.5V16" />
+      <path d="M14 10.5V16" />
     </svg>
   )
 }

@@ -21,15 +21,22 @@ const MODEL = Object.freeze({
     id: "minimaxai/minimax-m2.5",
     label: "MiniMax M2.5",
     apiKeyEnvVar: "MINIMAX_API_KEY",
-    defaults: { temperature: 0.6, topP: 0.95, maxTokens: 256 }
+    defaults: { temperature: 0.6, topP: 0.95, maxTokens: 1400 }
 });
 const SYSTEM_PROMPT =
-    "Answer directly with the final answer only. Do not reveal chain-of-thought, reasoning, or <think> tags.";
+    [
+        "You are a helpful AI assistant.",
+        "Answer with a complete final answer in clean markdown.",
+        "Use short sections, bullets, tables, or code blocks when they improve clarity.",
+        "Do not reveal chain-of-thought, reasoning, or <think> tags.",
+        "Do not stop mid-sentence or mid-list.",
+        "If the user asks for brevity, keep it brief. Otherwise prefer complete and well-structured answers."
+    ].join(" ");
 const TITLE_PROMPT =
     "Generate a short chat title from the user's message. Return only the title, 2 to 6 words, no quotes.";
-const REQUEST_TIMEOUT_MS = 45000;
-const STREAM_START_TIMEOUT_MS = 20000;
-const STREAM_IDLE_TIMEOUT_MS = 20000;
+const REQUEST_TIMEOUT_MS = 90000;
+const STREAM_START_TIMEOUT_MS = 15000;
+const STREAM_IDLE_TIMEOUT_MS = 30000;
 const TITLE_TIMEOUT_MS = 15000;
 
 export class AiServiceError extends Error {
@@ -285,6 +292,17 @@ export async function* streamChatReply({
         : Promise.resolve(null);
     let stream;
 
+    yield {
+        type: "meta",
+        data: {
+            provider: PROVIDER,
+            model: MODEL.id,
+            title: null,
+            fallbackUsed: false,
+            fallbackFrom: null
+        }
+    };
+
     try {
         stream = await withTimeout(
             createChatModel().stream(
@@ -303,18 +321,6 @@ export async function* streamChatReply({
 
     let fullText = "";
     const iterator = stream[Symbol.asyncIterator]();
-    const title = await titlePromise;
-
-    yield {
-        type: "meta",
-        data: {
-            provider: PROVIDER,
-            model: MODEL.id,
-            title,
-            fallbackUsed: false,
-            fallbackFrom: null
-        }
-    };
 
     while (true) {
         let next;
@@ -357,6 +363,8 @@ export async function* streamChatReply({
     if (!fullText.trim()) {
         throw new AiServiceError(`Model "${MODEL.id}" returned no visible answer.`, 502);
     }
+
+    const title = await titlePromise;
 
     yield {
         type: "done",
