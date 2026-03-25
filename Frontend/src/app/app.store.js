@@ -1,7 +1,11 @@
 import { configureStore } from '@reduxjs/toolkit'
 import authReducer from '../features/auth/auth.slice'
+import chatReducer from '../features/chat/chat.slice'
 
-// Central Redux store. Auth pages read loading, error, and user state from here.
+// Central Redux store for auth and chat state.
 export const store = configureStore({
-  reducer: { auth: authReducer },
+  reducer: {
+    auth: authReducer,
+    chat: chatReducer,
+  },
 })

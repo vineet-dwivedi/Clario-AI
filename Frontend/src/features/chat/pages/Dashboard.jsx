@@ -1,9 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 
 import { MoonIcon, SparkleIcon, SunIcon } from '../../auth/components/AuthIcons'
 import { useAuth } from '../../auth/hook/useAuth'
+import {
+  clearChatError,
+  clearCurrentChat,
+  fetchChatMessages,
+  fetchChats,
+  sendChatMessage,
+  setCurrentChatId,
+} from '../chat.slice'
 import { useChat } from '../hook/useChat'
 
 const STORAGE_KEY = 'perplexity-auth-theme'
@@ -14,87 +22,11 @@ const promptActions = [
 ]
 
 const suggestionPrompts = [
-  { label: 'Summarize a document', icon: NoteIcon, tone: 'violet' },
+  { label: 'Summarize the latest chat', icon: NoteIcon, tone: 'violet' },
   { label: 'Debug this React hook', icon: CodeIcon, tone: 'teal' },
-  { label: 'Generate an illustration', icon: ImageIcon, tone: 'rose' },
-  { label: 'Explain quantum physics', icon: OrbitIcon, tone: 'mint' },
+  { label: 'Generate a product description', icon: ImageIcon, tone: 'rose' },
+  { label: 'Explain quantum physics simply', icon: OrbitIcon, tone: 'mint' },
 ]
-
-const threadCatalog = [
-  {
-    id: 'deep-sea',
-    title: 'How do deep sea creatures survive extreme pressure?',
-    sources: [
-      { domain: 'sciencedaily.com', title: 'How deep-sea fish survive crushing pressure', tone: 'sand' },
-      { domain: 'nature.com', title: 'Adaptation of cell membranes in extreme environments', tone: 'sage' },
-      { domain: 'oceanexplorer.noaa.gov', title: 'The Mariana Trench: Life at the bottom', tone: 'blue' },
-      { domain: 'nationalgeographic.com', title: 'Bizarre creatures of the abyssal zone', tone: 'rose' },
-    ],
-    answer: [
-      'Deep sea creatures survive intense pressure by evolving bodies that work with it instead of resisting it. Their proteins, membranes, and tissues stay stable even thousands of meters below the surface, where pressure can be hundreds of times greater than what land animals experience.',
-      'One of the main adaptations is the use of piezolytes such as TMAO, which help keep proteins folded correctly under pressure. Many species also build more flexible cell membranes so important transport and signaling processes continue to work in cold, dense water.',
-      'They also avoid structures that would collapse easily. Soft bodies, reduced air spaces, slower metabolisms, and pressure-tolerant enzymes allow these animals to remain functional in the deep ocean while still hunting, sensing their surroundings, and reproducing.',
-    ],
-  },
-  {
-    id: 'quantum',
-    title: 'Explain quantum entanglement',
-    sources: [
-      { domain: 'cern.ch', title: 'Quantum entanglement explained simply', tone: 'blue' },
-      { domain: 'scientificamerican.com', title: 'Why entanglement feels so strange', tone: 'rose' },
-      { domain: 'quantamagazine.org', title: 'The physics behind entangled particles', tone: 'sage' },
-      { domain: 'nature.com', title: 'Entanglement and information transfer', tone: 'sand' },
-    ],
-    answer: [
-      'Quantum entanglement happens when two particles become linked so that measuring one immediately determines the state of the other, even if they are far apart. The link is in the shared quantum state, not in a visible signal passing between them.',
-      'This does not let information travel faster than light, but it does mean nature preserves correlations that classical physics cannot explain on its own. That is why entanglement matters in quantum computing, cryptography, and teleportation research.',
-    ],
-  },
-  {
-    id: 'react-hooks',
-    title: 'Best practices for React hooks',
-    sources: [
-      { domain: 'react.dev', title: 'Rules of Hooks and mental models', tone: 'sage' },
-      { domain: 'overreacted.io', title: 'Thinking in effects correctly', tone: 'blue' },
-      { domain: 'kentcdodds.com', title: 'Patterns for custom hooks', tone: 'rose' },
-      { domain: 'frontendmasters.com', title: 'Avoiding stale closures in React', tone: 'sand' },
-    ],
-    answer: [
-      'Keep hooks predictable: call them at the top level, keep state close to where it is used, and separate rendering logic from side effects. If an effect only derives UI state, it usually should not be an effect at all.',
-      'Prefer custom hooks when a piece of behavior repeats in multiple components. That keeps components smaller and makes the dependency flow easier to reason about.',
-    ],
-  },
-  {
-    id: 'carbonara',
-    title: 'Recipe for authentic carbonara',
-    sources: [
-      { domain: 'giallozafferano.it', title: 'Classic Roman carbonara technique', tone: 'sand' },
-      { domain: 'seriouseats.com', title: 'How to emulsify the sauce correctly', tone: 'blue' },
-      { domain: 'eataly.com', title: 'Ingredient breakdown for carbonara', tone: 'rose' },
-      { domain: 'saveur.com', title: 'Traditional guanciale-based version', tone: 'sage' },
-    ],
-    answer: [
-      'Authentic carbonara uses pasta, egg yolks, Pecorino Romano, black pepper, and guanciale. There is no cream. The sauce forms when hot pasta water emulsifies with the egg and cheese mixture.',
-      'Render the guanciale slowly, mix yolks with cheese separately, then combine everything off the heat so the sauce turns glossy instead of scrambling.',
-    ],
-  },
-  {
-    id: 'roman-empire',
-    title: 'History of the Roman Empire',
-    sources: [
-      { domain: 'britannica.com', title: 'Roman Empire overview and timeline', tone: 'rose' },
-      { domain: 'history.com', title: 'From Augustus to the fall of Rome', tone: 'sand' },
-      { domain: 'worldhistory.org', title: 'Expansion, reforms, and collapse', tone: 'blue' },
-      { domain: 'cambridge.org', title: 'Imperial administration and culture', tone: 'sage' },
-    ],
-    answer: [
-      'The Roman Empire began when Augustus consolidated power after the fall of the Republic. It expanded across Europe, North Africa, and the Middle East, building durable systems for law, taxation, roads, and military control.',
-      'Over time, political instability, economic strain, military pressure, and administrative fragmentation weakened the western empire. The western half fell in the fifth century, while the eastern empire continued for nearly a thousand more years as Byzantium.',
-    ],
-  },
-]
-
-const threadLookup = Object.fromEntries(threadCatalog.map((thread) => [thread.id, thread]))
 
 const getInitialTheme = () => {
   if (typeof window === 'undefined') {
@@ -110,32 +42,19 @@ const getInitialTheme = () => {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-const createPreviewThread = (prompt) => ({
-  id: 'preview',
-  title: prompt,
-  sources: [
-    { domain: 'lumina research', title: `Research angles for "${prompt}"`, tone: 'sand' },
-    { domain: 'technical notes', title: `Core concepts to cover for "${prompt}"`, tone: 'sage' },
-    { domain: 'practical guide', title: `A concise response structure for "${prompt}"`, tone: 'blue' },
-    { domain: 'follow-up ideas', title: `Useful next questions related to "${prompt}"`, tone: 'rose' },
-  ],
-  answer: [
-    `This workspace is ready for the question "${prompt}". The sidebar, source cards, answer layout, and sticky composer are now in place for the frontend chat experience.`,
-    'When you wire this screen to the backend chat API, this section can render the real model response while keeping the same Perplexity-style reading flow.',
-  ],
-})
-
 function Dashboard() {
+  const dispatch = useDispatch()
   const navigate = useNavigate()
   const { handleLogout } = useAuth()
-  const { loading, user } = useSelector((state) => state.auth)
+  const { loading: isAuthLoading, user } = useSelector((state) => state.auth)
+  const { chats, currentChatId, error, isLoading, isSending, messagesByChatId } = useSelector((state) => state.chat)
   const [draft, setDraft] = useState('')
+  const [pendingPrompt, setPendingPrompt] = useState('')
   const [theme, setTheme] = useState(getInitialTheme)
   const [isThemeTransitioning, setIsThemeTransitioning] = useState(false)
-  const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false)
-  const [activeThreadId, setActiveThreadId] = useState(threadCatalog[0].id)
-  const [previewThread, setPreviewThread] = useState(null)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const transitionTimeoutRef = useRef(null)
+  const conversationEndRef = useRef(null)
 
   useChat(Boolean(user))
 
@@ -146,6 +65,12 @@ function Dashboard() {
   }, [theme])
 
   useEffect(() => {
+    if (user) {
+      dispatch(fetchChats())
+    }
+  }, [dispatch, user])
+
+  useEffect(() => {
     return () => {
       if (transitionTimeoutRef.current) {
         window.clearTimeout(transitionTimeoutRef.current)
@@ -153,14 +78,16 @@ function Dashboard() {
     }
   }, [])
 
+  const activeChat = chats.find((chat) => chat.id === currentChatId) || null
+  const activeMessages = currentChatId ? messagesByChatId[currentChatId] || [] : []
+  const hasActiveThread = Boolean(currentChatId || pendingPrompt)
   const username = user?.username?.trim() || 'Lumina User'
   const avatarLabel = username.slice(0, 2).toUpperCase()
   const nextTheme = theme === 'light' ? 'dark' : 'light'
-  const activeThread =
-    activeThreadId === 'preview' && previewThread ? previewThread : threadLookup[activeThreadId] || threadCatalog[0]
-  const visibleThreads = previewThread
-    ? [{ id: previewThread.id, title: previewThread.title }, ...threadCatalog]
-    : threadCatalog
+
+  useEffect(() => {
+    conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [activeMessages, currentChatId, pendingPrompt, isSending])
 
   const handleSuggestionClick = (label) => {
     setDraft(label)
@@ -181,38 +108,57 @@ function Dashboard() {
   }
 
   const handleMenuToggle = () => {
-    setIsWorkspaceOpen((current) => !current)
+    setIsSidebarOpen((current) => !current)
   }
 
-  const handleWorkspaceClose = () => {
-    setIsWorkspaceOpen(false)
+  const handleSidebarClose = () => {
+    setIsSidebarOpen(false)
   }
 
-  const handleThreadSelect = (threadId) => {
-    setActiveThreadId(threadId)
-    setIsWorkspaceOpen(true)
+  const handleThreadSelect = async (chatId) => {
+    dispatch(setCurrentChatId(chatId))
+    dispatch(clearChatError())
+    setPendingPrompt('')
+    setIsSidebarOpen(false)
+
+    if (!messagesByChatId[chatId]) {
+      await dispatch(fetchChatMessages(chatId))
+    }
   }
 
   const handleStartNewThread = () => {
     setDraft('')
-    setPreviewThread(null)
-    setActiveThreadId(threadCatalog[0].id)
-    setIsWorkspaceOpen(false)
+    setPendingPrompt('')
+    dispatch(clearChatError())
+    dispatch(clearCurrentChat())
+    setIsSidebarOpen(false)
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
 
     const prompt = draft.trim()
 
-    if (!prompt) {
+    if (!prompt || isSending) {
       return
     }
 
-    setPreviewThread(createPreviewThread(prompt))
-    setActiveThreadId('preview')
-    setIsWorkspaceOpen(true)
+    setPendingPrompt(prompt)
     setDraft('')
+    dispatch(clearChatError())
+
+    const result = await dispatch(
+      sendChatMessage({
+        chatId: currentChatId,
+        message: prompt,
+      }),
+    )
+
+    if (sendChatMessage.rejected.match(result)) {
+      setDraft(prompt)
+    }
+
+    setPendingPrompt('')
   }
 
   const handleLogoutClick = async () => {
@@ -220,137 +166,176 @@ function Dashboard() {
     navigate('/login', { replace: true })
   }
 
+  const visibleMessages = [...activeMessages]
+
+  if (pendingPrompt) {
+    visibleMessages.push({
+      id: 'pending-user',
+      role: 'user',
+      content: pendingPrompt,
+      pending: true,
+    })
+  }
+
+  if (isSending) {
+    visibleMessages.push({
+      id: 'pending-ai',
+      role: 'ai',
+      content: 'Thinking...',
+      pending: true,
+    })
+  }
+
   return (
     <div
       className={`dashboard-scene${isThemeTransitioning ? ' dashboard-scene--theme-shift' : ''}${
-        isWorkspaceOpen ? ' dashboard-scene--workspace' : ''
-      }`}
+        hasActiveThread ? ' dashboard-scene--thread' : ''
+      }${isSidebarOpen ? ' dashboard-scene--sidebar-open' : ''}`}
     >
       <span aria-hidden="true" className="theme-transition-layer" />
 
-      {isWorkspaceOpen ? (
-        <div className="dashboard-workspace">
-          <aside className="dashboard-sidebar">
-            <div className="dashboard-sidebar__header">
-              <div className="dashboard-sidebar__brand">
-                <span className="dashboard-brand__badge" aria-hidden="true">
-                  <SparkleIcon className="dashboard-brand__icon" />
-                </span>
-                <span className="dashboard-brand__name">Lumina</span>
-              </div>
+      {isSidebarOpen ? (
+        <button
+          aria-label="Close menu"
+          className="dashboard-sidebar-backdrop"
+          onClick={handleSidebarClose}
+          type="button"
+        />
+      ) : null}
 
+      <aside className={`dashboard-sidebar${isSidebarOpen ? ' dashboard-sidebar--open' : ''}`}>
+        <div className="dashboard-sidebar__header">
+          <div className="dashboard-sidebar__brand">
+            <span className="dashboard-brand__badge" aria-hidden="true">
+              <SparkleIcon className="dashboard-brand__icon" />
+            </span>
+            <span className="dashboard-brand__name">Lumina</span>
+          </div>
+
+          <button
+            aria-label="Close menu"
+            className="dashboard-sidebar__close dashboard-topbar__circle"
+            onClick={handleSidebarClose}
+            type="button"
+          >
+            <CloseIcon className="dashboard-topbar__icon" />
+          </button>
+        </div>
+
+        <button className="dashboard-sidebar__new" onClick={handleStartNewThread} type="button">
+          <span>New Thread</span>
+          <PlusIcon className="dashboard-sidebar__new-icon" />
+        </button>
+
+        <div className="dashboard-sidebar__section">
+          <p className="dashboard-sidebar__label">Recent</p>
+
+          <div className="dashboard-sidebar__threads">
+            {isLoading && chats.length === 0 ? <p className="dashboard-sidebar__note">Loading chats...</p> : null}
+
+            {!isLoading && chats.length === 0 ? <p className="dashboard-sidebar__note">No chats yet.</p> : null}
+
+            {chats.map((chat) => (
               <button
-                aria-label="Close menu"
-                className="dashboard-sidebar__close dashboard-topbar__circle"
-                onClick={handleWorkspaceClose}
+                className={`dashboard-thread-link${chat.id === currentChatId ? ' dashboard-thread-link--active' : ''}`}
+                key={chat.id}
+                onClick={() => handleThreadSelect(chat.id)}
                 type="button"
               >
-                <CloseIcon className="dashboard-topbar__icon" />
+                <ChatIcon className="dashboard-thread-link__icon" />
+                <span className="dashboard-thread-link__label">{chat.title}</span>
               </button>
-            </div>
+            ))}
+          </div>
+        </div>
 
-            <button className="dashboard-sidebar__new" onClick={handleStartNewThread} type="button">
-              <span>New Thread</span>
-              <PlusIcon className="dashboard-sidebar__new-icon" />
-            </button>
+        <div className="dashboard-sidebar__footer">
+          <button className="dashboard-sidebar__profile" type="button">
+            <span className="dashboard-sidebar__profile-avatar">{avatarLabel}</span>
+            <span className="dashboard-sidebar__profile-name">{username}</span>
+          </button>
 
-            <div className="dashboard-sidebar__section">
-              <p className="dashboard-sidebar__label">Recent</p>
+          <button
+            className="dashboard-sidebar__logout"
+            disabled={isAuthLoading}
+            onClick={handleLogoutClick}
+            type="button"
+          >
+            <LogoutIcon className="dashboard-sidebar__logout-icon" />
+            <span>{isAuthLoading ? 'Logging out...' : 'Logout'}</span>
+          </button>
+        </div>
+      </aside>
 
-              <div className="dashboard-sidebar__threads">
-                {visibleThreads.map((thread) => (
+      {hasActiveThread ? (
+        <div className="dashboard-thread-page">
+          <div className="dashboard-thread-page__header">
+            <div className="dashboard-shell">
+              <header className="dashboard-topbar">
+                <div className="dashboard-topbar__left">
                   <button
-                    className={`dashboard-thread-link${thread.id === activeThreadId ? ' dashboard-thread-link--active' : ''}`}
-                    key={thread.id}
-                    onClick={() => handleThreadSelect(thread.id)}
+                    aria-expanded={isSidebarOpen}
+                    aria-label="Open dashboard menu"
+                    className="dashboard-topbar__circle"
+                    onClick={handleMenuToggle}
                     type="button"
                   >
-                    <ChatIcon className="dashboard-thread-link__icon" />
-                    <span className="dashboard-thread-link__label">{thread.title}</span>
+                    <MenuIcon className="dashboard-topbar__icon" />
                   </button>
-                ))}
-              </div>
-            </div>
 
-            <div className="dashboard-sidebar__footer">
-              <button className="dashboard-sidebar__profile" type="button">
-                <span className="dashboard-sidebar__profile-avatar">{avatarLabel}</span>
-                <span className="dashboard-sidebar__profile-name">{username}</span>
-              </button>
+                  <div className="dashboard-brand">
+                    <span className="dashboard-brand__badge" aria-hidden="true">
+                      <SparkleIcon className="dashboard-brand__icon" />
+                    </span>
+                    <span className="dashboard-brand__name">Lumina</span>
+                  </div>
+                </div>
 
-              <button
-                className="dashboard-sidebar__logout"
-                disabled={loading}
-                onClick={handleLogoutClick}
-                type="button"
-              >
-                <LogoutIcon className="dashboard-sidebar__logout-icon" />
-                <span>{loading ? 'Logging out...' : 'Logout'}</span>
-              </button>
+                <div className="dashboard-topbar__actions">
+                  <button className="dashboard-topbar__link" onClick={handleStartNewThread} type="button">
+                    New chat
+                  </button>
+
+                  <button aria-label={`${username} profile`} className="dashboard-avatar" type="button">
+                    <span className="dashboard-avatar__label">{avatarLabel}</span>
+                  </button>
+                </div>
+              </header>
             </div>
-          </aside>
+          </div>
 
           <main className="dashboard-thread">
             <div className="dashboard-thread__scroll">
               <div className="dashboard-thread__inner">
-                <div className="dashboard-thread__mobilebar">
-                  <button
-                    aria-expanded={isWorkspaceOpen}
-                    aria-label="Close menu"
-                    className="dashboard-topbar__circle"
-                    onClick={handleWorkspaceClose}
-                    type="button"
-                  >
-                    <CloseIcon className="dashboard-topbar__icon" />
-                  </button>
-
-                  <span className="dashboard-thread__mobilebrand">Lumina</span>
+                <div className="dashboard-thread__hero">
+                  <h1 className="dashboard-thread__title">{activeChat?.title || pendingPrompt || 'New Chat'}</h1>
+                  <p className="dashboard-thread__copy">
+                    Ask follow-up questions in the same thread and the backend will keep the conversation grouped.
+                  </p>
                 </div>
 
-                <h1 className="dashboard-thread__title">{activeThread.title}</h1>
+                {error ? <p className="dashboard-thread__status dashboard-thread__status--error">{error}</p> : null}
 
-                <section className="dashboard-thread__section">
-                  <div className="dashboard-thread__eyebrow">
-                    <GlobeIcon className="dashboard-thread__eyebrow-icon" />
-                    <span>Sources</span>
-                  </div>
+                <div className="dashboard-conversation">
+                  {visibleMessages.map((message) => (
+                    <article
+                      className={`dashboard-message dashboard-message--${message.role}${message.pending ? ' dashboard-message--pending' : ''}`}
+                      key={message.id}
+                    >
+                      <div className="dashboard-message__meta">
+                        <span className="dashboard-message__role">{message.role === 'user' ? 'You' : 'Lumina'}</span>
+                      </div>
 
-                  <div className="dashboard-sources">
-                    {activeThread.sources.map((source) => (
-                      <article
-                        className={`dashboard-source-card dashboard-source-card--${source.tone}`}
-                        key={`${activeThread.id}-${source.domain}`}
-                      >
-                        <div className="dashboard-source-card__meta">
-                          <span className="dashboard-source-card__badge" aria-hidden="true">
-                            <SparkleIcon className="dashboard-source-card__badge-icon" />
-                          </span>
-                          <span className="dashboard-source-card__domain">{source.domain}</span>
-                        </div>
-                        <h2 className="dashboard-source-card__title">{source.title}</h2>
-                      </article>
-                    ))}
-                  </div>
-                </section>
+                      <p className="dashboard-message__content">{message.content}</p>
+                    </article>
+                  ))}
 
-                <section className="dashboard-thread__section dashboard-thread__section--answer">
-                  <div className="dashboard-thread__eyebrow">
-                    <TextStackIcon className="dashboard-thread__eyebrow-icon" />
-                    <span>Answer</span>
-                  </div>
-
-                  <div className="dashboard-answer">
-                    {activeThread.answer.map((paragraph) => (
-                      <p className="dashboard-answer__paragraph" key={paragraph}>
-                        {paragraph}
-                      </p>
-                    ))}
-                  </div>
-                </section>
+                  <div ref={conversationEndRef} />
+                </div>
               </div>
             </div>
 
-            <PromptComposer draft={draft} onChange={setDraft} onSubmit={handleSubmit} docked />
+            <PromptComposer draft={draft} isSending={isSending} onChange={setDraft} onSubmit={handleSubmit} docked />
           </main>
         </div>
       ) : (
@@ -358,7 +343,7 @@ function Dashboard() {
           <header className="dashboard-topbar">
             <div className="dashboard-topbar__left">
               <button
-                aria-expanded={isWorkspaceOpen}
+                aria-expanded={isSidebarOpen}
                 aria-label="Open dashboard menu"
                 className="dashboard-topbar__circle"
                 onClick={handleMenuToggle}
@@ -376,8 +361,8 @@ function Dashboard() {
             </div>
 
             <div className="dashboard-topbar__actions">
-              <button className="dashboard-topbar__link" type="button">
-                Library
+              <button className="dashboard-topbar__link" onClick={handleMenuToggle} type="button">
+                Chats
               </button>
 
               <button aria-label={`${username} profile`} className="dashboard-avatar" type="button">
@@ -390,11 +375,13 @@ function Dashboard() {
             <section className="dashboard-hero">
               <h1 className="dashboard-hero__title">What do you want to know?</h1>
               <p className="dashboard-hero__copy">
-                Ask anything. I&apos;ll search the web, read docs, and write code to help.
+                Ask anything. Your question will be sent to the backend AI service and the reply will appear here.
               </p>
             </section>
 
-            <PromptComposer draft={draft} onChange={setDraft} onSubmit={handleSubmit} />
+            {error ? <p className="dashboard-thread__status dashboard-thread__status--error">{error}</p> : null}
+
+            <PromptComposer draft={draft} isSending={isSending} onChange={setDraft} onSubmit={handleSubmit} />
 
             <div className="dashboard-suggestions" aria-label="Suggested prompts">
               {suggestionPrompts.map(({ label, icon: Icon, tone }) => (
@@ -430,7 +417,7 @@ function Dashboard() {
   )
 }
 
-function PromptComposer({ draft, onChange, onSubmit, docked = false }) {
+function PromptComposer({ draft, isSending, onChange, onSubmit, docked = false }) {
   return (
     <form className={`dashboard-composer${docked ? ' dashboard-composer--dock' : ''}`} onSubmit={onSubmit}>
       <div className="dashboard-composer__field">
@@ -464,7 +451,12 @@ function PromptComposer({ draft, onChange, onSubmit, docked = false }) {
             <MicIcon className="dashboard-composer__icon" />
           </button>
 
-          <button aria-label="Send question" className="dashboard-composer__send" disabled={!draft.trim()} type="submit">
+          <button
+            aria-label="Send question"
+            className="dashboard-composer__send"
+            disabled={!draft.trim() || isSending}
+            type="submit"
+          >
             <ArrowRightIcon className="dashboard-composer__send-icon" />
           </button>
         </div>
@@ -615,27 +607,6 @@ function LogoutIcon({ className }) {
       <path d="M10 5.5H7.5C6.95 5.5 6.5 5.95 6.5 6.5V17.5C6.5 18.05 6.95 18.5 7.5 18.5H10" />
       <path d="M13 8.5L17 12L13 15.5" />
       <path d="M10 12H17" />
-    </svg>
-  )
-}
-
-function GlobeIcon({ className }) {
-  return (
-    <svg aria-hidden="true" className={className} {...iconProps}>
-      <circle cx="12" cy="12" r="8" />
-      <path d="M4.8 12H19.2" />
-      <path d="M12 4C14.5 6.2 15.9 9 15.9 12C15.9 15 14.5 17.8 12 20" />
-      <path d="M12 4C9.5 6.2 8.1 9 8.1 12C8.1 15 9.5 17.8 12 20" />
-    </svg>
-  )
-}
-
-function TextStackIcon({ className }) {
-  return (
-    <svg aria-hidden="true" className={className} {...iconProps}>
-      <path d="M5 7H19" />
-      <path d="M5 12H15" />
-      <path d="M5 17H19" />
     </svg>
   )
 }
