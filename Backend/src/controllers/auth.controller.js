@@ -183,3 +183,15 @@ export async function getme(req,res) {
         user
     })
 }
+
+/**
+ * Clears the auth cookie and ends the current session on this device.
+ */
+export function logout(req, res) {
+    res.clearCookie("token");
+
+    return res.status(200).json({
+        message: "Logout successful",
+        success: true
+    });
+}
