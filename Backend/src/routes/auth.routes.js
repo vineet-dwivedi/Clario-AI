@@ -1,44 +1,20 @@
 import { Router } from "express";
-import { register ,login ,getme, logout } from "../controllers/auth.controller.js";
-import { registerValidator ,loginValidator} from "../validators/auth.validator.js";
-import { verifyEmail } from "../controllers/auth.controller.js";
+import {
+    getme,
+    login,
+    logout,
+    register,
+    verifyEmail
+} from "../controllers/auth.controller.js";
 import { authUser } from "../middleware/auth.middleware.js";
+import { loginValidator, registerValidator } from "../validators/auth.validator.js";
 
 const authRouter = Router();
 
-// Public registration route. Validation runs before the controller.
-/**
- * @route POST /api/auth/register
- * @desc Register a new user
- * @access Public
- * @body { username, email, password }
- */
 authRouter.post("/register", registerValidator, register);
-
-// Public login route. Backend returns a cookie on success.
-/**
- * @route POST /api/auth/login
- * @desc Login a user and return JWT
- * @access Public
- * @body { email, password }
- */
 authRouter.post("/login", loginValidator, login);
-
-// Email verification comes from the link inside the welcome email.
-authRouter.get("/verify-email",verifyEmail);
-
-/**
- * @route GET /api/auth/get-me
- * @desc Return the current authenticated user
- * @access Private
- */
-authRouter.get("/get-me", authUser, getme)
-
-/**
- * @route POST /api/auth/logout
- * @desc Clear the current auth cookie
- * @access Private
- */
-authRouter.post("/logout", authUser, logout)
+authRouter.get("/verify-email", verifyEmail);
+authRouter.get("/get-me", authUser, getme);
+authRouter.post("/logout", authUser, logout);
 
 export default authRouter;

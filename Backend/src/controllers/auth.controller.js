@@ -1,197 +1,168 @@
-import userModel from "../models/user.model.js";
 import jwt from "jsonwebtoken";
+import userModel from "../models/user.model.js";
 import { sendEmail } from "../services/mail.service.js";
 
-/**
- * Registers a user, creates an email verification token, and sends the verification email.
- * The account is created even if email delivery fails, so the frontend should still tell the
- * user to check email and contact support if no message arrives.
- */
+const SERVER_URL = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 5000}`;
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
+
+function createToken(payload, expiresIn) {
+    return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn });
+}
+
+function sendError(res, status, message, err = null) {
+    return res.status(status).json({
+        success: false,
+        message,
+        ...(err ? { err } : {})
+    });
+}
+
+function formatUser(user) {
+    return {
+        id: user._id,
+        username: user.username,
+        email: user.email
+    };
+}
+
+function getVerificationUrl(token) {
+    return `${SERVER_URL}/api/auth/verify-email?token=${token}`;
+}
+
+async function sendWelcomeEmail(user) {
+    await sendEmail({
+        to: user.email,
+        subject: "Welcome to Clario-AI!",
+        html: `
+            <p>Hi ${user.username},</p>
+            <p>Thank you for registering at <strong>Clario</strong>.</p>
+            <p>Please verify your email address:</p>
+            <a href="${getVerificationUrl(createToken({ email: user.email }, "1d"))}">
+                Verify Email
+            </a>
+        `
+    });
+}
+
 export async function register(req, res) {
     try {
         const { username, email, password } = req.body;
-
-        // 1. Check if user already exists
-        const isUserAlreadyExists = await userModel.findOne({
-            $or: [{ email }, { username }]
+        const existingUser = await userModel.findOne({
+            $or: [ { email }, { username } ]
         });
 
-        if (isUserAlreadyExists) {
-            return res.status(400).json({
-                message: "User with this email or username already exists",
-                success: false
-            });
+        if (existingUser) {
+            return sendError(res, 400, "User with this email or username already exists");
         }
 
-        // 2. Create user first
         const user = await userModel.create({ username, email, password });
 
-        // 3. Generate token (AFTER user exists OR directly use email)
-        const emailVerificationToken = jwt.sign(
-            { email: user.email },
-            process.env.JWT_SECRET,
-            { expiresIn: "1d" }
-        );
-
-        // 4. Send email
         try {
-            await sendEmail({
-                to: email,
-                subject: "Welcome to Clario-AI!",
-                html: `
-                    <p>Hi ${username},</p>
-                    <p>Thank you for registering at <strong>Clario</strong>. We're excited to have you on board!</p>
-                    <p>Please verify your email address by clicking the link below:</p>
-                    <a href="http://localhost:5000/api/auth/verify-email?token=${emailVerificationToken}">
-                        Verify Email
-                    </a>
-                    <p>If you didn't create an account, please ignore this email.</p>
-                    <p>Best regards,<br>The Clario Team</p>
-                `
-            });
+            await sendWelcomeEmail(user);
         } catch (error) {
             console.error("Welcome email could not be sent:", error?.message || error);
         }
 
-        // 5. Response
         return res.status(201).json({
-            message: "User registered successfully",
             success: true,
-            user: {
-                id: user._id,
-                username: user.username,
-                email: user.email
-            }
+            message: "User registered successfully",
+            user: formatUser(user)
         });
-
     } catch (error) {
         console.error("Register error:", error);
-        return res.status(500).json({
-            message: "Internal server error",
-            success: false
-        });
+        return sendError(res, 500, "Internal server error");
     }
 }
 
-/**
- * Verifies the email token from the mail link and marks the user as verified.
- */
-export async function verifyEmail(req,res){
-    const { token } = req.query;
+export async function verifyEmail(req, res) {
+    try {
+        const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
+        const user = await userModel.findOne({ email: decoded.email });
 
-    try{
-        const decoded = jwt.verify(token,process.env.JWT_SECRET);
-
-    
-    const user = await userModel.findOne({email: decoded.email });
-
-    if(!user){
-        return res.status(400).json({
-            message: "Invalid token",
-            success: false,
-            err: "User not found"
-        })
-    }
-
-    user.verified = true;
-    await user.save();
-
-    return res.send(`
-    <h1>Email Verified Successfully</h1>
-    <p>Your email has been verified. You can now log in to your account.</p>
-    <a href="http://localhost:3000/login">Go to Login</a>
-`);
-}catch(err){
-        return res.status(400).json({
-            message: "Invalid or expired token",
-            success: false,
-            err: err.message
-        })
-    }
-}
-
-/**
- * Logs the user in after checking password and email verification state.
- * On success the JWT is stored in an HTTP cookie.
- */
-export async function login(req,res){
-    const { email, password } = req.body;
-
-    const user = await userModel.findOne({ email })
-
-    if(!user){
-        return res.status(400).json({
-            message: "Invalid email or password",
-            success: false,
-            err: "User not found"
-        })
-    }
-
-    const isPasswordMatch = await user.comparePassword(password);
-
-    if(!isPasswordMatch){
-        return res.status(400).json({
-            message: "Invalid email or password",
-            success: false,
-            err: "Incorrect password"
-        })
-    }
-
-    if(!user.verified){
-        return res.status(400).json({
-            message: "Please verify your email before logging in",
-            success: false,
-            err: "Email not verified"
-        })
-    }
-
-    const token = jwt.sign({
-        id: user._id,
-        username: user.username,
-    }, process.env.JWT_SECRET, {expiresIn: '7d'})
-
-    res.cookie("token", token)
-    res.status(200).json({
-        message: "Login successful",
-        success: true,
-        user: {
-            id: user._id,
-            userrname: user.username,
-            email: user.email
+        if (!user) {
+            return sendError(res, 400, "Invalid token", "User not found");
         }
-    })
-}
 
-/**
- * Returns the currently authenticated user based on the cookie-decoded JWT payload.
- */
-export async function getme(req,res) {
-    const userId = req.user.id;
-    const user = await userModel.findById(userId).select("-password");
+        user.verified = true;
+        await user.save();
 
-    if(!user){
-        return res.status(404).json({
-            message: "User not found",
-            success: false,
-            err: "User not found"
-        })
+        return res.send(`
+            <h1>Email Verified Successfully</h1>
+            <p>Your email has been verified. You can now log in.</p>
+            <a href="${CLIENT_URL}/login">Go to Login</a>
+        `);
+    } catch (error) {
+        return sendError(res, 400, "Invalid or expired token", error.message);
     }
-
-    res.status(200).json({
-        message: "User details fetched successfully",
-        success: true,
-        user
-    })
 }
 
-/**
- * Clears the auth cookie and ends the current session on this device.
- */
+export async function login(req, res) {
+    try {
+        const { email, password } = req.body;
+        const user = await userModel.findOne({ email });
+
+        if (!user) {
+            return sendError(res, 400, "Invalid email or password", "User not found");
+        }
+
+        const passwordMatches = await user.comparePassword(password);
+
+        if (!passwordMatches) {
+            return sendError(res, 400, "Invalid email or password", "Incorrect password");
+        }
+
+        if (!user.verified) {
+            return sendError(res, 400, "Please verify your email before logging in", "Email not verified");
+        }
+
+        const token = createToken(
+            {
+                id: user._id,
+                username: user.username
+            },
+            "7d"
+        );
+
+        res.cookie("token", token, {
+            httpOnly: true,
+            sameSite: "lax"
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Login successful",
+            user: formatUser(user)
+        });
+    } catch (error) {
+        console.error("Login error:", error);
+        return sendError(res, 500, "Internal server error");
+    }
+}
+
+export async function getme(req, res) {
+    try {
+        const user = await userModel.findById(req.user.id).select("-password");
+
+        if (!user) {
+            return sendError(res, 404, "User not found", "User not found");
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "User details fetched successfully",
+            user
+        });
+    } catch (error) {
+        console.error("Get me error:", error);
+        return sendError(res, 500, "Internal server error");
+    }
+}
+
 export function logout(req, res) {
     res.clearCookie("token");
 
     return res.status(200).json({
-        message: "Logout successful",
-        success: true
+        success: true,
+        message: "Logout successful"
     });
 }

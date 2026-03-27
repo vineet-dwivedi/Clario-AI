@@ -1,9 +1,8 @@
 import { Router } from "express";
-const chatRouter = Router();
 import {
     deleteChat,
-    getChats,
     getChatMessages,
+    getChats,
     getModels,
     sendImageMessage,
     sendMessage,
@@ -11,12 +10,16 @@ import {
 } from "../controllers/chat.controller.js";
 import { authUser } from "../middleware/auth.middleware.js";
 
-chatRouter.get("/", authUser, getChats)
-chatRouter.get("/models", authUser, getModels)
-chatRouter.get("/:chatId/messages", authUser, getChatMessages)
-chatRouter.delete("/:chatId", authUser, deleteChat)
-chatRouter.post("/image", authUser, sendImageMessage)
-chatRouter.post("/message", authUser, sendMessage)
-chatRouter.post("/message/stream", authUser, sendStreamMessage)
+const chatRouter = Router();
 
-export default chatRouter
+chatRouter.use(authUser);
+
+chatRouter.get("/", getChats);
+chatRouter.get("/models", getModels);
+chatRouter.get("/:chatId/messages", getChatMessages);
+chatRouter.delete("/:chatId", deleteChat);
+chatRouter.post("/image", sendImageMessage);
+chatRouter.post("/message", sendMessage);
+chatRouter.post("/message/stream", sendStreamMessage);
+
+export default chatRouter;

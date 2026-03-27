@@ -7,35 +7,23 @@ import {
     getAvailableModels,
     streamChatReply
 } from "../services/ai.service.js";
-import {
-    generateImage,
-    getImageModel
-} from "../services/image.service.js";
-
-/**
- * Chat controller.
- *
- * Responsibilities:
- * - list saved chats and messages for the frontend
- * - load or create a chat for the logged-in user
- * - read previous messages for follow-up context
- * - delete a chat and its stored messages
- * - save the user's message
- * - get the AI response
- * - save the AI response
- * - return a small JSON response or SSE stream
- */
+import { generateImage, getImageModel } from "../services/image.service.js";
 
 const DEFAULT_CHAT_TITLE = "New Chat";
 
-const getChatRequestOptions = (req) => {
-    const { message, chatId, model, images, aspectRatio } = req.body;
-    return { message, chatId, model, images, aspectRatio };
-};
+function getErrorStatus(error) {
+    return error instanceof AiServiceError ? error.statusCode : 500;
+}
 
-const getChatIdParam = (req) => req.params.chatId;
+function sendError(res, error, fallbackMessage) {
+    return res.status(getErrorStatus(error)).json({
+        success: false,
+        message: error.message || fallbackMessage,
+        data: null
+    });
+}
 
-const requireUserId = (req) => {
+function getUserId(req) {
     const userId = req.user?.id;
 
     if (!userId) {
@@ -43,40 +31,59 @@ const requireUserId = (req) => {
     }
 
     return userId;
-};
+}
 
-const requireMessage = (message) => {
-    const trimmedMessage = message?.trim();
+function getMessageText(message) {
+    const text = String(message || "").trim();
 
-    if (!trimmedMessage) {
+    if (!text) {
         throw new AiServiceError("Message is required.", 400);
     }
 
-    return trimmedMessage;
-};
+    return text;
+}
 
-const formatChat = (chat) => ({
-    id: String(chat._id),
-    title: chat.title,
-    createdAt: chat.createdAt,
-    updatedAt: chat.updatedAt
-});
+function formatChat(chat) {
+    return {
+        id: String(chat._id),
+        title: chat.title,
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt
+    };
+}
 
-const formatMessage = (message) => ({
-    id: String(message._id),
-    role: message.role,
-    content: message.content,
-    kind: message.kind || (Array.isArray(message.images) && message.images.length ? "image" : "text"),
-    images: Array.isArray(message.images) ? message.images : [],
-    provider: message.provider || null,
-    model: message.model || null,
-    createdAt: message.createdAt
-});
+function formatMessage(message) {
+    return {
+        id: String(message._id),
+        role: message.role,
+        content: message.content,
+        kind: message.kind || "text",
+        images: Array.isArray(message.images) ? message.images : [],
+        provider: message.provider || null,
+        model: message.model || null,
+        createdAt: message.createdAt
+    };
+}
 
-const writeSseEvent = (res, event, data) => {
+function normalizeImages(images = []) {
+    if (!Array.isArray(images)) {
+        return [];
+    }
+
+    return images
+        .filter((image) => image?.mimeType && (image?.dataUrl || image?.data))
+        .map((image) => ({
+            mimeType: image.mimeType,
+            dataUrl:
+                image.dataUrl ||
+                `data:${image.mimeType};base64,${String(image.data).replace(/^data:[^;]+;base64,/i, "")}`
+        }));
+}
+
+function writeSseEvent(res, event, data) {
     res.write(`event: ${event}\n`);
     res.write(`data: ${JSON.stringify(data)}\n\n`);
-};
+}
 
 async function findChat(userId, chatId) {
     if (!mongoose.Types.ObjectId.isValid(chatId)) {
@@ -92,75 +99,63 @@ async function findChat(userId, chatId) {
     return chat;
 }
 
-async function findOrCreateChat(userId, chatId) {
-    return chatId ? findChat(userId, chatId) : chatModel.create({ user: userId });
+async function getOrCreateChat(userId, chatId) {
+    if (chatId) {
+        return findChat(userId, chatId);
+    }
+
+    return chatModel.create({ user: userId });
 }
 
-async function setChatTitle(chat, title) {
+async function updateChatTitle(chat, title) {
     if (!title?.trim() || chat.title !== DEFAULT_CHAT_TITLE) {
-        return chat;
+        return;
     }
 
     chat.title = title.trim();
     await chat.save();
-
-    return chat;
 }
 
-const touchChat = (chatId) =>
-    chatModel.updateOne({ _id: chatId }, { $set: { updatedAt: new Date() } });
+async function updateChatTime(chatId) {
+    await chatModel.updateOne(
+        { _id: chatId },
+        { $set: { updatedAt: new Date() } }
+    );
+}
 
-const normalizeStoredImages = (images = []) =>
-    Array.isArray(images)
-        ? images
-            .filter((image) => image?.mimeType && (image?.dataUrl || image?.data))
-            .map((image) => ({
-                mimeType: image.mimeType,
-                dataUrl: image.dataUrl || `data:${image.mimeType};base64,${String(image.data).replace(/^data:[^;]+;base64,/i, "")}`
-            }))
-        : [];
-
-const saveMessage = (chatId, role, content, options = {}) =>
-    messageModel.create({
+async function saveMessage(chatId, role, content, options = {}) {
+    return messageModel.create({
         chat: chatId,
         role,
         content,
         kind: options.kind || "text",
-        images: normalizeStoredImages(options.images),
+        images: normalizeImages(options.images),
         provider: options.provider || null,
         model: options.model || null
     });
+}
 
-const getChatHistory = async (chatId) =>
-    (
-        await messageModel
-            .find({
-                chat: chatId,
-                $or: [
-                    { kind: { $exists: false } },
-                    { kind: "text" }
-                ]
-            })
-            .sort({ createdAt: -1 })
-            .limit(20)
-            .select("role content")
-            .lean()
-    ).reverse();
+async function getChatHistory(chatId) {
+    const messages = await messageModel
+        .find({
+            chat: chatId,
+            $or: [
+                { kind: { $exists: false } },
+                { kind: "text" }
+            ]
+        })
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .select("role content")
+        .lean();
 
-const buildDefaultTitle = (message) =>
-    String(message || "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 60) || DEFAULT_CHAT_TITLE;
-
-const getErrorStatus = (error) =>
-    error instanceof AiServiceError ? error.statusCode : 500;
+    return messages.reverse();
+}
 
 export async function getChats(req, res) {
     try {
-        const userId = requireUserId(req);
         const chats = await chatModel
-            .find({ user: userId })
+            .find({ user: getUserId(req) })
             .sort({ updatedAt: -1 })
             .lean();
 
@@ -170,22 +165,15 @@ export async function getChats(req, res) {
             data: chats.map(formatChat)
         });
     } catch (error) {
-        return res.status(getErrorStatus(error)).json({
-            success: false,
-            message: error.message || "Failed to fetch chats.",
-            data: null
-        });
+        return sendError(res, error, "Failed to fetch chats.");
     }
 }
 
 export async function getChatMessages(req, res) {
     try {
-        const userId = requireUserId(req);
-        const chat = await findChat(userId, getChatIdParam(req));
-        const messages = await messageModel
-            .find({ chat: chat._id })
-            .sort({ createdAt: 1 })
-            .lean();
+        const userId = getUserId(req);
+        const chat = await findChat(userId, req.params.chatId);
+        const messages = await messageModel.find({ chat: chat._id }).sort({ createdAt: 1 }).lean();
 
         return res.status(200).json({
             success: true,
@@ -196,18 +184,14 @@ export async function getChatMessages(req, res) {
             }
         });
     } catch (error) {
-        return res.status(getErrorStatus(error)).json({
-            success: false,
-            message: error.message || "Failed to fetch chat messages.",
-            data: null
-        });
+        return sendError(res, error, "Failed to fetch chat messages.");
     }
 }
 
 export async function deleteChat(req, res) {
     try {
-        const userId = requireUserId(req);
-        const chat = await findChat(userId, getChatIdParam(req));
+        const userId = getUserId(req);
+        const chat = await findChat(userId, req.params.chatId);
 
         await messageModel.deleteMany({ chat: chat._id });
         await chat.deleteOne();
@@ -215,16 +199,10 @@ export async function deleteChat(req, res) {
         return res.status(200).json({
             success: true,
             message: "Chat deleted successfully",
-            data: {
-                chatId: String(chat._id)
-            }
+            data: { chatId: String(chat._id) }
         });
     } catch (error) {
-        return res.status(getErrorStatus(error)).json({
-            success: false,
-            message: error.message || "Failed to delete chat.",
-            data: null
-        });
+        return sendError(res, error, "Failed to delete chat.");
     }
 }
 
@@ -234,8 +212,8 @@ export async function getModels(req, res) {
             success: true,
             message: "Available AI models fetched successfully",
             data: [
-                ...getAvailableModels().map((modelConfig) => ({
-                    ...modelConfig,
+                ...getAvailableModels().map((model) => ({
+                    ...model,
                     capability: "chat"
                 })),
                 {
@@ -246,33 +224,32 @@ export async function getModels(req, res) {
             ]
         });
     } catch (error) {
-        return res.status(getErrorStatus(error)).json({
-            success: false,
-            message: error.message || "Failed to fetch available AI models.",
-            data: null
-        });
+        return sendError(res, error, "Failed to fetch available AI models.");
     }
 }
 
 export async function sendMessage(req, res) {
     try {
-        const userId = requireUserId(req);
-        const { chatId, message, model } = getChatRequestOptions(req);
-        const content = requireMessage(message);
-        const chat = await findOrCreateChat(userId, chatId);
+        const userId = getUserId(req);
+        const text = getMessageText(req.body.message);
+        const chat = await getOrCreateChat(userId, req.body.chatId);
         const history = await getChatHistory(chat._id);
-        const userMessage = await saveMessage(chat._id, "user", content);
+        const userMessage = await saveMessage(chat._id, "user", text);
         const aiReply = await generateChatReply({
-            message: content,
+            message: text,
             history,
             generateTitle: chat.title === DEFAULT_CHAT_TITLE,
-            model
+            model: req.body.model
         });
 
-        await setChatTitle(chat, aiReply.title);
+        await updateChatTitle(chat, aiReply.title);
 
-        const aiMessage = await saveMessage(chat._id, "ai", aiReply.text);
-        await touchChat(chat._id);
+        const aiMessage = await saveMessage(chat._id, "ai", aiReply.text, {
+            provider: aiReply.provider,
+            model: aiReply.model
+        });
+
+        await updateChatTime(chat._id);
 
         return res.status(200).json({
             success: true,
@@ -286,32 +263,19 @@ export async function sendMessage(req, res) {
         });
     } catch (error) {
         console.error("AI chat error:", error);
-
-        return res.status(getErrorStatus(error)).json({
-            success: false,
-            message: error.message || "Failed to generate AI response.",
-            data: null
-        });
+        return sendError(res, error, "Failed to generate AI response.");
     }
 }
 
 export async function sendImageMessage(req, res) {
     try {
-        const userId = requireUserId(req);
-        const {
-            chatId,
-            message,
-            images = []
-        } = getChatRequestOptions(req);
-        const content = requireMessage(message);
-        const chat = await findOrCreateChat(userId, chatId);
-        const userMessage = await saveMessage(chat._id, "user", content, {
-            kind: "text",
-            images
-        });
-        const aiReply = await generateImage({ message: content });
+        const userId = getUserId(req);
+        const text = getMessageText(req.body.message);
+        const chat = await getOrCreateChat(userId, req.body.chatId);
+        const userMessage = await saveMessage(chat._id, "user", text);
+        const aiReply = await generateImage({ message: text });
 
-        await setChatTitle(chat, buildDefaultTitle(content));
+        await updateChatTitle(chat, text);
 
         const aiMessage = await saveMessage(chat._id, "ai", aiReply.text, {
             kind: "image",
@@ -319,7 +283,8 @@ export async function sendImageMessage(req, res) {
             provider: aiReply.provider,
             model: aiReply.model
         });
-        await touchChat(chat._id);
+
+        await updateChatTime(chat._id);
 
         return res.status(200).json({
             success: true,
@@ -334,35 +299,20 @@ export async function sendImageMessage(req, res) {
         });
     } catch (error) {
         console.error("Image generation error:", error);
-
-        return res.status(getErrorStatus(error)).json({
-            success: false,
-            message: error.message || "Failed to generate image.",
-            data: null
-        });
+        return sendError(res, error, "Failed to generate image.");
     }
 }
 
 export async function sendStreamMessage(req, res) {
     let handleClose;
-    let abortController;
-    let chat;
-    let history = [];
-    let userMessage;
-    let content = "";
-    let shouldGenerateTitle = false;
-    let sentMeta = false;
-    let sentToken = false;
 
     try {
-        const userId = requireUserId(req);
-        const { chatId, message, model } = getChatRequestOptions(req);
-        content = requireMessage(message);
-        chat = await findOrCreateChat(userId, chatId);
-        history = await getChatHistory(chat._id);
-        shouldGenerateTitle = chat.title === DEFAULT_CHAT_TITLE;
-        userMessage = await saveMessage(chat._id, "user", content);
-        abortController = new AbortController();
+        const userId = getUserId(req);
+        const text = getMessageText(req.body.message);
+        const chat = await getOrCreateChat(userId, req.body.chatId);
+        const history = await getChatHistory(chat._id);
+        const userMessage = await saveMessage(chat._id, "user", text);
+        const abortController = new AbortController();
 
         handleClose = () => abortController.abort();
         req.on("close", handleClose);
@@ -374,112 +324,55 @@ export async function sendStreamMessage(req, res) {
         res.flushHeaders?.();
 
         for await (const event of streamChatReply({
-            message: content,
+            message: text,
             history,
-            generateTitle: shouldGenerateTitle,
-            model,
+            generateTitle: chat.title === DEFAULT_CHAT_TITLE,
+            model: req.body.model,
             signal: abortController.signal
         })) {
             if (event.type === "meta") {
-                sentMeta = true;
-                await setChatTitle(chat, event.data.title);
-                event.data = {
+                await updateChatTitle(chat, event.data.title);
+
+                writeSseEvent(res, "meta", {
                     ...event.data,
                     chat: {
                         ...formatChat(chat),
                         title: event.data.title || (chat.title === DEFAULT_CHAT_TITLE ? "" : chat.title)
                     },
                     userMessage: formatMessage(userMessage)
-                };
+                });
+                continue;
             }
 
             if (event.type === "token") {
-                sentToken = true;
+                writeSseEvent(res, "token", event.data);
+                continue;
             }
 
             if (event.type === "done") {
-                await setChatTitle(chat, event.data.title);
+                await updateChatTitle(chat, event.data.title);
 
-                const aiMessage = await saveMessage(chat._id, "ai", event.data.text);
-                await touchChat(chat._id);
+                const aiMessage = await saveMessage(chat._id, "ai", event.data.text, {
+                    provider: event.data.provider,
+                    model: event.data.model
+                });
 
-                event.data = {
+                await updateChatTime(chat._id);
+
+                writeSseEvent(res, "done", {
                     ...event.data,
                     chat: formatChat(chat),
                     userMessage: formatMessage(userMessage),
                     aiMessage: formatMessage(aiMessage)
-                };
+                });
             }
-
-            if (res.writableEnded || res.destroyed) {
-                break;
-            }
-
-            writeSseEvent(res, event.type, event.data);
         }
 
         if (!res.writableEnded) {
             res.end();
         }
     } catch (error) {
-        console.error("AI chat error:", error);
-
-        const canFallbackToJson =
-            res.headersSent &&
-            !res.writableEnded &&
-            !res.destroyed &&
-            !sentToken &&
-            !abortController?.signal.aborted &&
-            chat &&
-            userMessage;
-
-        if (canFallbackToJson) {
-            try {
-                const aiReply = await generateChatReply({
-                    message: content,
-                    history,
-                    generateTitle: shouldGenerateTitle,
-                    model
-                });
-
-                await setChatTitle(chat, aiReply.title);
-
-                const aiMessage = await saveMessage(chat._id, "ai", aiReply.text);
-                await touchChat(chat._id);
-
-                if (!sentMeta) {
-                    writeSseEvent(res, "meta", {
-                        provider: "openai",
-                        model: aiReply.model,
-                        title: null,
-                        fallbackUsed: true,
-                        fallbackFrom: "stream",
-                        chat: {
-                            ...formatChat(chat),
-                            title: ""
-                        },
-                        userMessage: formatMessage(userMessage)
-                    });
-                }
-
-                writeSseEvent(res, "done", {
-                    provider: "openai",
-                    model: aiReply.model,
-                    title: chat.title,
-                    text: aiReply.text,
-                    fallbackUsed: true,
-                    fallbackFrom: "stream",
-                    chat: formatChat(chat),
-                    userMessage: formatMessage(userMessage),
-                    aiMessage: formatMessage(aiMessage)
-                });
-                res.end();
-                return;
-            } catch (fallbackError) {
-                console.error("AI stream fallback error:", fallbackError);
-                error = fallbackError;
-            }
-        }
+        console.error("AI stream error:", error);
 
         if (res.headersSent) {
             if (!res.writableEnded && !res.destroyed) {
@@ -492,11 +385,7 @@ export async function sendStreamMessage(req, res) {
             return;
         }
 
-        return res.status(getErrorStatus(error)).json({
-            success: false,
-            message: error.message || "Failed to generate AI response.",
-            data: null
-        });
+        return sendError(res, error, "Failed to generate AI response.");
     } finally {
         if (handleClose) {
             req.off("close", handleClose);
