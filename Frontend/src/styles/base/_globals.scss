@@ -22,6 +22,9 @@
   --control-bg: rgba(255, 255, 255, 0.94);
   --toggle-bg: rgba(255, 255, 255, 0.92);
   --toggle-icon: #6b7385;
+  --scrollbar-thumb: rgba(137, 160, 113, 0.34);
+  --scrollbar-thumb-hover: rgba(122, 146, 98, 0.5);
+  --scrollbar-track: rgba(255, 255, 255, 0.22);
   --text-primary: #1f2635;
   --text-secondary: #70788c;
   --text-muted: #98a1b2;
@@ -56,6 +59,9 @@
   --control-bg: rgba(22, 29, 48, 0.94);
   --toggle-bg: rgba(25, 33, 54, 0.94);
   --toggle-icon: #d6dcff;
+  --scrollbar-thumb: rgba(166, 159, 223, 0.36);
+  --scrollbar-thumb-hover: rgba(184, 177, 240, 0.54);
+  --scrollbar-track: rgba(21, 28, 46, 0.3);
   --text-primary: #f4f6ff;
   --text-secondary: #a5aec8;
   --text-muted: #7180a8;
@@ -78,9 +84,41 @@ body {
   min-width: 320px;
   color: var(--text-primary);
   background: var(--bg-base);
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
   transition:
     background-color 420ms $ease-standard,
     color 420ms $ease-standard;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 0.22rem solid transparent;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--scrollbar-thumb-hover), var(--scrollbar-thumb));
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--scrollbar-thumb-hover), var(--scrollbar-thumb-hover));
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 #root {

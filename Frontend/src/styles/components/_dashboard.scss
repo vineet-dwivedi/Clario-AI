@@ -2,7 +2,8 @@
 
 .dashboard-scene {
   position: relative;
-  min-height: 100vh;
+  --dashboard-docked-height: 7.5rem;
+  min-height: 100dvh;
   padding: clamp($space-5, 3vw, $space-8);
   overflow: hidden;
   isolation: isolate;
@@ -200,7 +201,7 @@
 }
 
 .dashboard-main {
-  min-height: calc(100vh - 9rem);
+  min-height: calc(100dvh - 9rem);
   display: grid;
   align-content: center;
   justify-items: center;
@@ -231,10 +232,10 @@
 }
 
 .dashboard-composer {
-  width: min(100%, 51rem);
-  padding: clamp($space-4, 3vw, $space-5);
+  width: min(100%, 48rem);
+  padding: clamp($space-3, 2.5vw, $space-4);
   border: 1px solid var(--panel-border);
-  border-radius: 2rem;
+  border-radius: 1.6rem;
   background:
     linear-gradient(180deg, var(--panel-highlight), rgba(255, 255, 255, 0)),
     var(--panel-bg);
@@ -255,9 +256,12 @@
 }
 
 .dashboard-composer--dock {
-  width: min(calc(100% - 3rem), 60rem);
-  margin: 0 auto clamp($space-6, 4vw, $space-8);
-  border-radius: 2.2rem;
+  position: sticky;
+  bottom: calc(#{$space-3} + env(safe-area-inset-bottom));
+  z-index: 8;
+  width: min(calc(100% - 2rem), 42rem);
+  margin: 0 auto clamp($space-4, 3vw, $space-5);
+  border-radius: 1.5rem;
   animation-delay: 0ms;
 }
 
@@ -266,7 +270,7 @@
   align-items: center;
   justify-content: space-between;
   gap: $space-3;
-  margin-bottom: $space-4;
+  margin-bottom: $space-3;
 }
 
 .dashboard-mode-toggle {
@@ -330,27 +334,29 @@
 .dashboard-composer__field {
   display: flex;
   align-items: flex-start;
-  gap: $space-4;
+  gap: $space-3;
 }
 
 .dashboard-composer__search {
-  width: 1.5rem;
-  height: 1.5rem;
-  margin-top: 0.28rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  margin-top: 0.55rem;
   flex-shrink: 0;
   color: var(--text-muted);
 }
 
 .dashboard-composer__input {
   width: 100%;
-  min-height: 4.5rem;
+  min-height: 1.75rem;
+  max-height: min(13.75rem, 38vh);
   border: 0;
   background: transparent;
   color: var(--text-primary);
-  font-size: clamp(1.15rem, 2vw, 1.5rem);
-  line-height: 1.5;
+  font-size: clamp(1rem, 1.5vw, 1.12rem);
+  line-height: 1.55;
   resize: none;
   outline: 0;
+  overflow-y: hidden;
 
   &::placeholder {
     color: var(--text-muted);
@@ -418,7 +424,7 @@
 }
 
 .dashboard-composer__footer {
-  margin-top: $space-4;
+  margin-top: $space-3;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -570,12 +576,15 @@
 }
 
 .dashboard-thread-page {
-  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .dashboard-thread-page__header {
+  flex-shrink: 0;
   padding: clamp($space-5, 3vw, $space-8);
   padding-bottom: 0;
 }
@@ -587,7 +596,7 @@
   width: min(19rem, calc(100vw - 1.5rem));
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  min-height: 100dvh;
   padding: clamp($space-5, 3vw, $space-6);
   overflow-y: auto;
   background:
@@ -833,20 +842,25 @@
 
 .dashboard-thread {
   min-width: 0;
-  min-height: 100vh;
+  min-height: 0;
+  flex: 1;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .dashboard-thread__scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: clamp($space-8, 6vw, $space-10) clamp($space-6, 5vw, $space-8) $space-6;
+  padding: clamp($space-5, 4vw, $space-6) clamp($space-5, 4vw, $space-6)
+    calc(var(--dashboard-docked-height) + clamp(#{$space-5}, 5vw, #{$space-6}) + env(safe-area-inset-bottom));
+  overscroll-behavior: contain;
+  scroll-padding-bottom: calc(var(--dashboard-docked-height) + $space-5 + env(safe-area-inset-bottom));
 }
 
 .dashboard-thread__inner {
-  width: min(100%, 58rem);
+  width: min(100%, 54rem);
   margin: 0 auto;
 }
 
@@ -997,7 +1011,7 @@
 
 .dashboard-message {
   position: relative;
-  max-width: min(100%, 48rem);
+  width: min(100%, 46rem);
   padding: $space-4;
   border: 1px solid var(--field-border);
   border-radius: 1.4rem;
@@ -1030,17 +1044,6 @@
     inset: 0 auto 0 0;
     width: 0.22rem;
     background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.95), rgba(var(--accent-rgb), 0.18));
-  }
-
-  &::after {
-    content: "";
-    position: absolute;
-    inset: -24% auto auto 18%;
-    width: 11rem;
-    height: 11rem;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0));
-    pointer-events: none;
   }
 }
 
@@ -1367,6 +1370,10 @@
   }
 }
 
+.dashboard-scene .theme-toggle {
+  z-index: 12;
+}
+
 @media (hover: hover) {
   .dashboard-brand:hover .dashboard-brand__badge,
   .dashboard-sidebar__brand:hover .dashboard-brand__badge {
@@ -1411,6 +1418,10 @@
     align-items: stretch;
   }
 
+  .dashboard-topbar {
+    gap: $space-3;
+  }
+
   .dashboard-topbar__left {
     justify-content: flex-start;
   }
@@ -1423,11 +1434,15 @@
   .dashboard-main {
     min-height: auto;
     padding-top: clamp($space-8, 8vw, $space-10);
-    padding-bottom: 6rem;
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom));
   }
 
   .dashboard-thread__title {
     font-size: clamp(2.25rem, 9vw, 3rem);
+  }
+
+  .dashboard-thread__copy {
+    font-size: 0.95rem;
   }
 
   .dashboard-sources {
@@ -1441,9 +1456,30 @@
   }
 
   .dashboard-composer--dock {
+    bottom: calc(#{$space-2} + env(safe-area-inset-bottom));
     width: calc(100% - #{$space-4 * 2});
-    margin-bottom: 6rem;
+    margin-bottom: $space-3;
+    border-radius: 1.25rem;
   }
+
+  .dashboard-message {
+    width: 100%;
+    padding: $space-3;
+  }
+
+  .dashboard-message__content {
+    font-size: 0.98rem;
+    line-height: 1.65;
+  }
+
+  .dashboard-composer {
+    border-radius: 1.3rem;
+  }
+
+  .dashboard-composer__input {
+    font-size: 1rem;
+  }
+
 }
 
 @media (max-width: 30rem) {
@@ -1456,12 +1492,9 @@
   }
 
   .dashboard-composer {
-    border-radius: 1.5rem;
-  }
-
-  .dashboard-composer__actions,
-  .dashboard-suggestions {
-    justify-content: center;
+    width: 100%;
+    padding: $space-3;
+    border-radius: 1.15rem;
   }
 
   .dashboard-sidebar__new {
@@ -1472,6 +1505,34 @@
     opacity: 1;
     pointer-events: auto;
     transform: translateX(0);
+  }
+
+  .dashboard-composer__field {
+    gap: $space-2;
+  }
+
+  .dashboard-composer__search {
+    margin-top: 0.45rem;
+  }
+
+  .dashboard-thread__scroll {
+    padding-inline: $space-4;
+    padding-bottom: calc(var(--dashboard-docked-height) + #{$space-4} + env(safe-area-inset-bottom));
+  }
+
+  .dashboard-composer__toolbar {
+    margin-bottom: $space-2;
+  }
+
+  .dashboard-mode-toggle {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .dashboard-mode-toggle__button {
+    flex: 1;
+    justify-content: center;
+    padding-inline: $space-3;
   }
 }
 
