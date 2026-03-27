@@ -7,6 +7,10 @@ import {
     getAvailableModels,
     streamChatReply
 } from "../services/ai.service.js";
+import {
+    generateNanoBananaImage,
+    getNanoBananaModel
+} from "../services/nano-banana.service.js";
 
 /**
  * Chat controller.
@@ -25,8 +29,8 @@ import {
 const DEFAULT_CHAT_TITLE = "New Chat";
 
 const getChatRequestOptions = (req) => {
-    const { message, chatId, model } = req.body;
-    return { message, chatId, model };
+    const { message, chatId, model, images, aspectRatio } = req.body;
+    return { message, chatId, model, images, aspectRatio };
 };
 
 const getChatIdParam = (req) => req.params.chatId;
@@ -62,6 +66,10 @@ const formatMessage = (message) => ({
     id: String(message._id),
     role: message.role,
     content: message.content,
+    kind: message.kind || (Array.isArray(message.images) && message.images.length ? "image" : "text"),
+    images: Array.isArray(message.images) ? message.images : [],
+    provider: message.provider || null,
+    model: message.model || null,
     createdAt: message.createdAt
 });
 
@@ -102,18 +110,48 @@ async function setChatTitle(chat, title) {
 const touchChat = (chatId) =>
     chatModel.updateOne({ _id: chatId }, { $set: { updatedAt: new Date() } });
 
-const saveMessage = (chatId, role, content) =>
-    messageModel.create({ chat: chatId, role, content });
+const normalizeStoredImages = (images = []) =>
+    Array.isArray(images)
+        ? images
+            .filter((image) => image?.mimeType && (image?.dataUrl || image?.data))
+            .map((image) => ({
+                mimeType: image.mimeType,
+                dataUrl: image.dataUrl || `data:${image.mimeType};base64,${String(image.data).replace(/^data:[^;]+;base64,/i, "")}`
+            }))
+        : [];
+
+const saveMessage = (chatId, role, content, options = {}) =>
+    messageModel.create({
+        chat: chatId,
+        role,
+        content,
+        kind: options.kind || "text",
+        images: normalizeStoredImages(options.images),
+        provider: options.provider || null,
+        model: options.model || null
+    });
 
 const getChatHistory = async (chatId) =>
     (
         await messageModel
-            .find({ chat: chatId })
+            .find({
+                chat: chatId,
+                $or: [
+                    { kind: { $exists: false } },
+                    { kind: "text" }
+                ]
+            })
             .sort({ createdAt: -1 })
             .limit(20)
             .select("role content")
             .lean()
     ).reverse();
+
+const buildDefaultTitle = (message) =>
+    String(message || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 60) || DEFAULT_CHAT_TITLE;
 
 const getErrorStatus = (error) =>
     error instanceof AiServiceError ? error.statusCode : 500;
@@ -195,7 +233,17 @@ export async function getModels(req, res) {
         return res.status(200).json({
             success: true,
             message: "Available AI models fetched successfully",
-            data: getAvailableModels()
+            data: [
+                ...getAvailableModels().map((modelConfig) => ({
+                    ...modelConfig,
+                    capability: "chat"
+                })),
+                {
+                    ...getNanoBananaModel(),
+                    capability: "image",
+                    isDefault: true
+                }
+            ]
         });
     } catch (error) {
         return res.status(getErrorStatus(error)).json({
@@ -242,6 +290,59 @@ export async function sendMessage(req, res) {
         return res.status(getErrorStatus(error)).json({
             success: false,
             message: error.message || "Failed to generate AI response.",
+            data: null
+        });
+    }
+}
+
+export async function sendImageMessage(req, res) {
+    try {
+        const userId = requireUserId(req);
+        const {
+            chatId,
+            message,
+            images = [],
+            aspectRatio
+        } = getChatRequestOptions(req);
+        const content = requireMessage(message);
+        const chat = await findOrCreateChat(userId, chatId);
+        const userMessage = await saveMessage(chat._id, "user", content, {
+            kind: "text",
+            images
+        });
+        const aiReply = await generateNanoBananaImage({
+            message: content,
+            images,
+            aspectRatio
+        });
+
+        await setChatTitle(chat, buildDefaultTitle(content));
+
+        const aiMessage = await saveMessage(chat._id, "ai", aiReply.text, {
+            kind: "image",
+            images: aiReply.images,
+            provider: aiReply.provider,
+            model: aiReply.model
+        });
+        await touchChat(chat._id);
+
+        return res.status(200).json({
+            success: true,
+            message: "Nano Banana image generated successfully",
+            data: {
+                chat: formatChat(chat),
+                model: aiReply.model,
+                provider: aiReply.provider,
+                userMessage: formatMessage(userMessage),
+                aiMessage: formatMessage(aiMessage)
+            }
+        });
+    } catch (error) {
+        console.error("Nano Banana error:", error);
+
+        return res.status(getErrorStatus(error)).json({
+            success: false,
+            message: error.message || "Failed to generate Nano Banana image.",
             data: null
         });
     }

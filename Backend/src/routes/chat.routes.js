@@ -5,6 +5,7 @@ import {
     getChats,
     getChatMessages,
     getModels,
+    sendImageMessage,
     sendMessage,
     sendStreamMessage
 } from "../controllers/chat.controller.js";
@@ -14,6 +15,7 @@ chatRouter.get("/", authUser, getChats)
 chatRouter.get("/models", authUser, getModels)
 chatRouter.get("/:chatId/messages", authUser, getChatMessages)
 chatRouter.delete("/:chatId", authUser, deleteChat)
+chatRouter.post("/image", authUser, sendImageMessage)
 chatRouter.post("/message", authUser, sendMessage)
 chatRouter.post("/message/stream", authUser, sendStreamMessage)
 

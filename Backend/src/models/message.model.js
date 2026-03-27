@@ -15,10 +15,40 @@ const messageSchema = new mongoose.Schema(
             type: String,
             required: true,
         },
+        kind: {
+            type: String,
+            enum: [ 'text', 'image' ],
+            default: 'text',
+        },
+        images: {
+            type: [
+                {
+                    dataUrl: {
+                        type: String,
+                        required: true,
+                    },
+                    mimeType: {
+                        type: String,
+                        required: true,
+                    },
+                },
+            ],
+            default: [],
+        },
         role: {
             type: String,
             enum: [ 'user', 'ai' ],
             required: true,
+        },
+        provider: {
+            type: String,
+            default: null,
+            trim: true,
+        },
+        model: {
+            type: String,
+            default: null,
+            trim: true,
         },
     },
     { timestamps: true }

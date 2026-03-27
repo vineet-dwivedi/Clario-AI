@@ -13,7 +13,7 @@ import {
   fetchChats,
   setCurrentChatId,
 } from '../chat.slice'
-import { streamMessage } from '../service/chat.api'
+import { generateImage, streamMessage } from '../service/chat.api'
 
 const STORAGE_KEY = 'perplexity-auth-theme'
 
@@ -28,6 +28,37 @@ const suggestionPrompts = [
   { label: 'Generate a product description', icon: ImageIcon, tone: 'rose' },
   { label: 'Explain quantum physics simply', icon: OrbitIcon, tone: 'mint' },
 ]
+const COMPOSER_MODE = Object.freeze({
+  CHAT: 'chat',
+  IMAGE: 'image',
+})
+const IMAGE_ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4']
+const MAX_REFERENCE_IMAGES = 5
+
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error(`Failed to read "${file.name}".`))
+    reader.readAsDataURL(file)
+  })
+
+const stripDataUrlPrefix = (value) => String(value || '').replace(/^data:[^;]+;base64,/i, '')
+
+const createImageAttachments = async (files) =>
+  Promise.all(
+    files.map(async (file, index) => {
+      const dataUrl = await readFileAsDataUrl(file)
+
+      return {
+        id: `${file.name}-${file.lastModified}-${index}`,
+        name: file.name,
+        mimeType: file.type || 'image/png',
+        dataUrl,
+        data: stripDataUrlPrefix(dataUrl),
+      }
+    }),
+  )
 
 const getInitialTheme = () => {
   if (typeof window === 'undefined') {
@@ -50,6 +81,9 @@ function Dashboard() {
   const { loading: isAuthLoading, user } = useSelector((state) => state.auth)
   const { chats, currentChatId, error, isDeleting, isLoading, messagesByChatId } = useSelector((state) => state.chat)
   const [draft, setDraft] = useState('')
+  const [composerMode, setComposerMode] = useState(COMPOSER_MODE.CHAT)
+  const [composerImages, setComposerImages] = useState([])
+  const [imageAspectRatio, setImageAspectRatio] = useState('1:1')
   const [deletingChatId, setDeletingChatId] = useState(null)
   const [streamState, setStreamState] = useState(null)
   const [streamError, setStreamError] = useState('')
@@ -60,6 +94,7 @@ function Dashboard() {
   const transitionTimeoutRef = useRef(null)
   const conversationEndRef = useRef(null)
   const streamAbortRef = useRef(null)
+  const imageInputRef = useRef(null)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -95,7 +130,7 @@ function Dashboard() {
 
   useEffect(() => {
     conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [activeMessages, currentChatId, streamState?.aiText, streamState?.userMessage?.content])
+  }, [activeMessages, currentChatId, streamState?.aiText, streamState?.aiImages?.length, streamState?.userMessage?.content])
 
   useEffect(() => {
     if (!streamState?.aiBuffer) {
@@ -173,6 +208,57 @@ function Dashboard() {
     setDraft(label)
   }
 
+  const handleComposerModeChange = (nextMode) => {
+    setComposerMode(nextMode)
+
+    if (nextMode === COMPOSER_MODE.CHAT) {
+      setComposerImages([])
+      setImageAspectRatio('1:1')
+    }
+  }
+
+  const handlePromptAction = (label) => {
+    if (label !== 'Attach') {
+      return
+    }
+
+    setComposerMode(COMPOSER_MODE.IMAGE)
+    imageInputRef.current?.click()
+  }
+
+  const handleRemoveComposerImage = (imageId) => {
+    setComposerImages((currentImages) => currentImages.filter((image) => image.id !== imageId))
+  }
+
+  const handleImageSelection = async (event) => {
+    const files = Array.from(event.target.files || []).filter((file) => file.type.startsWith('image/'))
+
+    if (!files.length) {
+      return
+    }
+
+    try {
+      const nextImages = await createImageAttachments(files)
+
+      setComposerImages((currentImages) => {
+        const mergedImages = [...currentImages, ...nextImages].slice(0, MAX_REFERENCE_IMAGES)
+
+        if (currentImages.length + nextImages.length > MAX_REFERENCE_IMAGES) {
+          setStreamError(`You can attach up to ${MAX_REFERENCE_IMAGES} reference images.`)
+        } else {
+          setStreamError('')
+        }
+
+        return mergedImages
+      })
+      setComposerMode(COMPOSER_MODE.IMAGE)
+    } catch (error) {
+      setStreamError(error.message || 'Failed to load image.')
+    } finally {
+      event.target.value = ''
+    }
+  }
+
   const handleThemeToggle = () => {
     if (transitionTimeoutRef.current) {
       window.clearTimeout(transitionTimeoutRef.current)
@@ -199,6 +285,7 @@ function Dashboard() {
     streamAbortRef.current?.abort()
     streamAbortRef.current = null
     setPendingHydrationChatId(null)
+    setComposerImages([])
     dispatch(setCurrentChatId(chatId))
     dispatch(clearChatError())
     setStreamError('')
@@ -215,6 +302,7 @@ function Dashboard() {
     setStreamError('')
     setStreamState(null)
     setPendingHydrationChatId(null)
+    setComposerImages([])
     streamAbortRef.current?.abort()
     streamAbortRef.current = null
     dispatch(clearChatError())
@@ -258,8 +346,83 @@ function Dashboard() {
     event.preventDefault()
 
     const prompt = draft.trim()
+    const pendingImages = composerImages
 
     if (!prompt || isStreaming) {
+      return
+    }
+
+    if (composerMode === COMPOSER_MODE.IMAGE) {
+      streamAbortRef.current?.abort()
+      streamAbortRef.current = null
+      setPendingHydrationChatId(null)
+      setStreamError('')
+      setStreamState({
+        chat: activeChat,
+        title: activeChat?.title || prompt,
+        userMessage: {
+          id: 'pending-user',
+          role: 'user',
+          kind: 'text',
+          content: prompt,
+          images: pendingImages,
+          pending: true,
+        },
+        aiText: '',
+        aiImages: [],
+        aiKind: 'image',
+        doneReceived: false,
+        isStreaming: true,
+      })
+      setDraft('')
+      setComposerImages([])
+      dispatch(clearChatError())
+
+      try {
+        const response = await generateImage({
+          chatId: currentChatId,
+          message: prompt,
+          images: pendingImages.map(({ mimeType, data, dataUrl }) => ({
+            mimeType,
+            data,
+            dataUrl,
+          })),
+          aspectRatio: imageAspectRatio,
+        })
+        const payload = response.data || {}
+        const nextChatId = payload.chat?.id || currentChatId
+
+        setStreamState({
+          chat: payload.chat || activeChat,
+          title: payload.chat?.title || prompt,
+          userMessage:
+            payload.userMessage ||
+            {
+              id: 'pending-user',
+              role: 'user',
+              kind: 'text',
+              content: prompt,
+              images: pendingImages,
+            },
+          aiText: payload.aiMessage?.content || '',
+          aiImages: payload.aiMessage?.images || [],
+          aiKind: payload.aiMessage?.kind || 'image',
+          doneReceived: true,
+          isStreaming: false,
+        })
+
+        if (nextChatId) {
+          dispatch(setCurrentChatId(nextChatId))
+          setPendingHydrationChatId(nextChatId)
+        }
+      } catch (imageFailure) {
+        setDraft(prompt)
+        setComposerImages(pendingImages)
+        setStreamError(imageFailure.message || 'Failed to generate image.')
+        setPendingHydrationChatId(null)
+        setStreamState(null)
+      }
+
       return
     }
 
@@ -392,11 +555,13 @@ function Dashboard() {
     visibleMessages.push(streamState.userMessage)
   }
 
-  if (streamState?.aiText || isStreaming) {
+  if (streamState?.aiText || streamState?.aiImages?.length || isStreaming) {
     visibleMessages.push({
       id: 'streaming-ai',
       role: 'ai',
+      kind: streamState?.aiKind || 'text',
       content: streamState?.aiText || '',
+      images: streamState?.aiImages || [],
       pending: isStreaming,
     })
   }
@@ -555,11 +720,20 @@ function Dashboard() {
 
                       {message.role === 'ai' ? (
                         <div className="dashboard-message__content dashboard-message__content--ai">
-                          <ChatMarkdown content={message.content || (message.pending ? 'Thinking...' : '')} />
+                          {message.content ? <ChatMarkdown content={message.content} /> : null}
+                          {Array.isArray(message.images) && message.images.length ? (
+                            <MessageImages images={message.images} pending={message.pending} />
+                          ) : null}
+                          {!message.content && !message.images?.length && message.pending ? <p>Generating...</p> : null}
                           {message.pending ? <span aria-hidden="true" className="dashboard-message__stream-caret" /> : null}
                         </div>
                       ) : (
-                        <p className="dashboard-message__content dashboard-message__content--user">{message.content}</p>
+                        <div className="dashboard-message__content dashboard-message__content--user">
+                          <p>{message.content}</p>
+                          {Array.isArray(message.images) && message.images.length ? (
+                            <MessageImages images={message.images} pending={message.pending} />
+                          ) : null}
+                        </div>
                       )}
                     </article>
                   ))}
@@ -568,8 +742,22 @@ function Dashboard() {
                 </div>
               </div>
             </div>
-
-            <PromptComposer draft={draft} isSending={isStreaming} onChange={setDraft} onSubmit={handleSubmit} docked />
+            <PromptComposer
+              aspectRatio={imageAspectRatio}
+              attachments={composerImages}
+              draft={draft}
+              fileInputRef={imageInputRef}
+              isSending={isStreaming}
+              mode={composerMode}
+              onAction={handlePromptAction}
+              onAspectRatioChange={setImageAspectRatio}
+              onChange={setDraft}
+              onFilesSelected={handleImageSelection}
+              onModeChange={handleComposerModeChange}
+              onRemoveAttachment={handleRemoveComposerImage}
+              onSubmit={handleSubmit}
+              docked
+            />
           </main>
         </div>
       ) : (
@@ -615,7 +803,21 @@ function Dashboard() {
 
             {statusError ? <p className="dashboard-thread__status dashboard-thread__status--error">{statusError}</p> : null}
 
-            <PromptComposer draft={draft} isSending={isStreaming} onChange={setDraft} onSubmit={handleSubmit} />
+            <PromptComposer
+              aspectRatio={imageAspectRatio}
+              attachments={composerImages}
+              draft={draft}
+              fileInputRef={imageInputRef}
+              isSending={isStreaming}
+              mode={composerMode}
+              onAction={handlePromptAction}
+              onAspectRatioChange={setImageAspectRatio}
+              onChange={setDraft}
+              onFilesSelected={handleImageSelection}
+              onModeChange={handleComposerModeChange}
+              onRemoveAttachment={handleRemoveComposerImage}
+              onSubmit={handleSubmit}
+            />
 
             <div className="dashboard-suggestions" aria-label="Suggested prompts">
               {suggestionPrompts.map(({ label, icon: Icon, tone }) => (
@@ -651,9 +853,80 @@ function Dashboard() {
   )
 }
 
-function PromptComposer({ draft, isSending, onChange, onSubmit, docked = false }) {
+function PromptComposer({
+  aspectRatio,
+  attachments,
+  draft,
+  fileInputRef,
+  isSending,
+  mode,
+  onAction,
+  onAspectRatioChange,
+  onChange,
+  onFilesSelected,
+  onModeChange,
+  onRemoveAttachment,
+  onSubmit,
+  docked = false,
+}) {
   return (
     <form className={`dashboard-composer${docked ? ' dashboard-composer--dock' : ''}`} onSubmit={onSubmit}>
+      <div className="dashboard-composer__toolbar">
+        <div className="dashboard-mode-toggle" role="tablist" aria-label="Composer mode">
+          <button
+            aria-selected={mode === COMPOSER_MODE.CHAT}
+            className={`dashboard-mode-toggle__button${
+              mode === COMPOSER_MODE.CHAT ? ' dashboard-mode-toggle__button--active' : ''
+            }`}
+            onClick={() => onModeChange(COMPOSER_MODE.CHAT)}
+            role="tab"
+            type="button"
+          >
+            <SparkleIcon className="dashboard-mode-toggle__icon" />
+            <span>Chat</span>
+          </button>
+
+          <button
+            aria-selected={mode === COMPOSER_MODE.IMAGE}
+            className={`dashboard-mode-toggle__button${
+              mode === COMPOSER_MODE.IMAGE ? ' dashboard-mode-toggle__button--active' : ''
+            }`}
+            onClick={() => onModeChange(COMPOSER_MODE.IMAGE)}
+            role="tab"
+            type="button"
+          >
+            <ImageIcon className="dashboard-mode-toggle__icon" />
+            <span>Nano Banana</span>
+          </button>
+        </div>
+
+        {mode === COMPOSER_MODE.IMAGE ? (
+          <label className="dashboard-composer__select-wrap">
+            <span className="sr-only">Image aspect ratio</span>
+            <select
+              className="dashboard-composer__select"
+              onChange={(event) => onAspectRatioChange(event.target.value)}
+              value={aspectRatio}
+            >
+              {IMAGE_ASPECT_RATIOS.map((ratio) => (
+                <option key={ratio} value={ratio}>
+                  {ratio}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
+
+      <input
+        accept="image/png,image/jpeg,image/webp"
+        className="sr-only"
+        multiple
+        onChange={onFilesSelected}
+        ref={fileInputRef}
+        type="file"
+      />
+
       <div className="dashboard-composer__field">
         <SearchIcon className="dashboard-composer__search" />
 
@@ -664,16 +937,39 @@ function PromptComposer({ draft, isSending, onChange, onSubmit, docked = false }
           className="dashboard-composer__input"
           id={docked ? 'dashboard-question-docked' : 'dashboard-question'}
           onChange={(event) => onChange(event.target.value)}
-          placeholder="Ask a question or search..."
+          placeholder={
+            mode === COMPOSER_MODE.IMAGE
+              ? 'Describe the image you want to generate or edit...'
+              : 'Ask a question or search...'
+          }
           rows="1"
           value={draft}
         />
       </div>
 
+      {attachments.length ? (
+        <div className="dashboard-composer__attachments">
+          {attachments.map((attachment) => (
+            <div className="dashboard-attachment-chip" key={attachment.id}>
+              <img alt={attachment.name} className="dashboard-attachment-chip__thumb" src={attachment.dataUrl} />
+              <span className="dashboard-attachment-chip__label">{attachment.name}</span>
+              <button
+                aria-label={`Remove ${attachment.name}`}
+                className="dashboard-attachment-chip__remove"
+                onClick={() => onRemoveAttachment(attachment.id)}
+                type="button"
+              >
+                <CloseIcon className="dashboard-attachment-chip__remove-icon" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="dashboard-composer__footer">
         <div className="dashboard-composer__actions">
           {promptActions.map(({ label, icon: Icon }) => (
-            <button className="dashboard-composer__action" key={label} type="button">
+            <button className="dashboard-composer__action" key={label} onClick={() => onAction(label)} type="button">
               <Icon className="dashboard-composer__action-icon" />
               <span>{label}</span>
             </button>
@@ -686,7 +982,7 @@ function PromptComposer({ draft, isSending, onChange, onSubmit, docked = false }
           </button>
 
           <button
-            aria-label="Send question"
+            aria-label={mode === COMPOSER_MODE.IMAGE ? 'Generate image' : 'Send question'}
             className="dashboard-composer__send"
             disabled={!draft.trim() || isSending}
             type="submit"
@@ -696,6 +992,23 @@ function PromptComposer({ draft, isSending, onChange, onSubmit, docked = false }
         </div>
       </div>
     </form>
+  )
+}
+
+function MessageImages({ images, pending = false }) {
+  return (
+    <div className={`dashboard-message__images${pending ? ' dashboard-message__images--pending' : ''}`}>
+      {images.map((image, index) => (
+        <figure className="dashboard-message__image-card" key={`${image.dataUrl || image.mimeType}-${index}`}>
+          <img
+            alt={`Generated image ${index + 1}`}
+            className="dashboard-message__image"
+            loading="lazy"
+            src={image.dataUrl}
+          />
+        </figure>
+      ))}
+    </div>
   )
 }
 

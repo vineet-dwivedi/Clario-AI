@@ -8,10 +8,12 @@ const api = axios.create({
   withCredentials: true,
 })
 
-const buildChatPayload = ({ chatId, message, model }) => ({
+const buildChatPayload = ({ chatId, message, model, images, aspectRatio }) => ({
   message,
   ...(chatId ? { chatId } : {}),
   ...(model ? { model } : {}),
+  ...(Array.isArray(images) && images.length ? { images } : {}),
+  ...(aspectRatio ? { aspectRatio } : {}),
 })
 
 const getJsonErrorMessage = async (response) => {
@@ -46,6 +48,20 @@ export async function getChatMessages(chatId) {
  */
 export async function sendMessage(payload) {
   const response = await api.post('/api/chats/message', buildChatPayload(payload))
+  return response.data
+}
+
+/**
+ * Generates a Nano Banana image reply and stores it in the current thread.
+ * @param {{
+ *   message: string,
+ *   chatId?: string | null,
+ *   images?: Array<{ mimeType: string, data?: string, dataUrl?: string }>,
+ *   aspectRatio?: string | null
+ * }} payload
+ */
+export async function generateImage(payload) {
+  const response = await api.post('/api/chats/image', buildChatPayload(payload))
   return response.data
 }
 
