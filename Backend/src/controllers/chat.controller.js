@@ -8,9 +8,9 @@ import {
     streamChatReply
 } from "../services/ai.service.js";
 import {
-    generateNanoBananaImage,
-    getNanoBananaModel
-} from "../services/nano-banana.service.js";
+    generateImage,
+    getImageModel
+} from "../services/image.service.js";
 
 /**
  * Chat controller.
@@ -239,7 +239,7 @@ export async function getModels(req, res) {
                     capability: "chat"
                 })),
                 {
-                    ...getNanoBananaModel(),
+                    ...getImageModel(),
                     capability: "image",
                     isDefault: true
                 }
@@ -301,8 +301,7 @@ export async function sendImageMessage(req, res) {
         const {
             chatId,
             message,
-            images = [],
-            aspectRatio
+            images = []
         } = getChatRequestOptions(req);
         const content = requireMessage(message);
         const chat = await findOrCreateChat(userId, chatId);
@@ -310,11 +309,7 @@ export async function sendImageMessage(req, res) {
             kind: "text",
             images
         });
-        const aiReply = await generateNanoBananaImage({
-            message: content,
-            images,
-            aspectRatio
-        });
+        const aiReply = await generateImage({ message: content });
 
         await setChatTitle(chat, buildDefaultTitle(content));
 
@@ -328,7 +323,7 @@ export async function sendImageMessage(req, res) {
 
         return res.status(200).json({
             success: true,
-            message: "Nano Banana image generated successfully",
+            message: "Image generated successfully",
             data: {
                 chat: formatChat(chat),
                 model: aiReply.model,
@@ -338,11 +333,11 @@ export async function sendImageMessage(req, res) {
             }
         });
     } catch (error) {
-        console.error("Nano Banana error:", error);
+        console.error("Image generation error:", error);
 
         return res.status(getErrorStatus(error)).json({
             success: false,
-            message: error.message || "Failed to generate Nano Banana image.",
+            message: error.message || "Failed to generate image.",
             data: null
         });
     }

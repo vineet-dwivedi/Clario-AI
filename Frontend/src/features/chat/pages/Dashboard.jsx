@@ -19,7 +19,6 @@ const STORAGE_KEY = 'perplexity-auth-theme'
 
 const promptActions = [
   { label: 'Focus', icon: GridIcon },
-  { label: 'Attach', icon: FileIcon },
 ]
 
 const suggestionPrompts = [
@@ -896,26 +895,10 @@ function PromptComposer({
             type="button"
           >
             <ImageIcon className="dashboard-mode-toggle__icon" />
-            <span>Nano Banana</span>
+            <span>Free Image</span>
           </button>
         </div>
 
-        {mode === COMPOSER_MODE.IMAGE ? (
-          <label className="dashboard-composer__select-wrap">
-            <span className="sr-only">Image aspect ratio</span>
-            <select
-              className="dashboard-composer__select"
-              onChange={(event) => onAspectRatioChange(event.target.value)}
-              value={aspectRatio}
-            >
-              {IMAGE_ASPECT_RATIOS.map((ratio) => (
-                <option key={ratio} value={ratio}>
-                  {ratio}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
       </div>
 
       <input
@@ -939,7 +922,7 @@ function PromptComposer({
           onChange={(event) => onChange(event.target.value)}
           placeholder={
             mode === COMPOSER_MODE.IMAGE
-              ? 'Describe the image you want to generate or edit...'
+              ? 'Describe the image you want to generate...'
               : 'Ask a question or search...'
           }
           rows="1"

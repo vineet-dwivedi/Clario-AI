@@ -52,7 +52,7 @@ export async function sendMessage(payload) {
 }
 
 /**
- * Generates a Nano Banana image reply and stores it in the current thread.
+ * Generates an image reply and stores it in the current thread.
  * @param {{
  *   message: string,
  *   chatId?: string | null,
