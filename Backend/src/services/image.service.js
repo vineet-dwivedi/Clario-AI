@@ -1,7 +1,7 @@
 import { AiServiceError } from "./ai.service.js";
 
 const PROVIDER = "pollinations";
-const MODEL = "free-image";
+const MODEL = process.env.POLLINATIONS_MODEL || "flux";
 
 function requirePrompt(message) {
     const prompt = String(message || "").trim();
@@ -18,21 +18,48 @@ function getImageUrl(prompt) {
         `https://gen.pollinations.ai/image/${encodeURIComponent(prompt)}`
     );
 
-    if (process.env.POLLINATIONS_API_KEY) {
-        url.searchParams.set("key", process.env.POLLINATIONS_API_KEY);
-    }
+    url.searchParams.set("model", MODEL);
 
     return url.toString();
+}
+
+async function requestImage(prompt, useApiKey = true) {
+    const headers = {};
+
+    if (useApiKey && process.env.POLLINATIONS_API_KEY) {
+        headers.Authorization = `Bearer ${process.env.POLLINATIONS_API_KEY}`;
+    }
+
+    return fetch(getImageUrl(prompt), { headers });
 }
 
 export async function generateImage({
     message
 }) {
     const prompt = requirePrompt(message);
-    const response = await fetch(getImageUrl(prompt));
+    let response = await requestImage(prompt, true);
+
+    if (
+        !response.ok &&
+        process.env.POLLINATIONS_API_KEY &&
+        [ 400, 401, 403 ].includes(response.status)
+    ) {
+        response = await requestImage(prompt, false);
+    }
 
     if (!response.ok) {
-        throw new AiServiceError("Failed to generate image.", 502);
+        let errorText = "";
+
+        try {
+            errorText = (await response.text()).trim();
+        } catch {
+            errorText = "";
+        }
+
+        throw new AiServiceError(
+            errorText || `Image provider failed with status ${response.status}.`,
+            502
+        );
     }
 
     const mimeType = response.headers.get("content-type") || "image/jpeg";
@@ -55,7 +82,7 @@ export function getImageModel() {
     return {
         provider: PROVIDER,
         model: MODEL,
-        label: "Free Image",
+        label: "Pollinations Image",
         apiKeyEnvVar: "POLLINATIONS_API_KEY"
     };
 }

@@ -5,8 +5,10 @@ import mongoose from 'mongoose';
  * The server startup file handles process exit if this promise rejects.
  */
 export async function connectToDB(){
-  mongoose.connect(process.env.MONGO_URI)
-  .then(()=>{
-    console.log('CONNECTED TO DB')
-  })
+  if (!process.env.MONGO_URI) {
+    throw new Error('MONGO_URI is missing in Backend/.env')
+  }
+
+  await mongoose.connect(process.env.MONGO_URI)
+  console.log('CONNECTED TO DB')
 }
