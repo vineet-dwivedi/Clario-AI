@@ -1,9 +1,37 @@
-import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { ChatOpenAI } from "@langchain/openai";
 
-const PROVIDER = "openai";
-const MODEL = process.env.OPENAI_MODEL || "gpt-5-mini";
-const SYSTEM_PROMPT = "You are a helpful AI assistant.";
+const TEMPERATURE = getNumber(process.env.CHAT_TEMPERATURE, 0.7);
+const TOP_P = getNumber(process.env.CHAT_TOP_P, 0.9);
+const MAX_TOKENS = getNumber(process.env.CHAT_MAX_TOKENS, 1024);
+
+const CHAT_MODELS = [
+    {
+        alias: "gemini",
+        label: "Gemini Free",
+        provider: "google",
+        model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+        apiKeyEnvVar: "GEMINI_API_KEY",
+        isDefault: true
+    },
+    {
+        alias: "llama",
+        label: "Llama Local",
+        provider: "ollama",
+        model: process.env.OLLAMA_MODEL || "llama3.2:3b",
+        apiKeyEnvVar: null,
+        isDefault: false
+    },
+    {
+        alias: "qwen",
+        label: "Qwen Coder",
+        provider: "ollama",
+        model: process.env.QWEN_OLLAMA_MODEL || "qwen2.5-coder:7b",
+        apiKeyEnvVar: null,
+        isDefault: false
+    }
+];
 
 export class AiServiceError extends Error {
     constructor(message, statusCode = 500) {
@@ -13,15 +41,88 @@ export class AiServiceError extends Error {
     }
 }
 
-function getChatModel(model) {
-    if (!process.env.OPENAI_API_KEY) {
-        throw new AiServiceError("OPENAI_API_KEY is missing.", 500);
+function getNumber(value, fallback) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+}
+
+function getOllamaBaseUrl() {
+    const baseUrl = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434";
+    return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
+}
+
+function getDefaultModelConfig() {
+    return CHAT_MODELS.find((model) => model.isDefault) || CHAT_MODELS[0];
+}
+
+function getModelConfig(requestedModel) {
+    if (!requestedModel) {
+        return getDefaultModelConfig();
     }
 
-    return new ChatOpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-        model: model || MODEL
+    return CHAT_MODELS.find((model) =>
+        model.alias === requestedModel || model.model === requestedModel
+    );
+}
+
+function requireModelConfig(requestedModel) {
+    const modelConfig = getModelConfig(requestedModel);
+
+    if (!modelConfig) {
+        throw new AiServiceError("Selected model is not available.", 400);
+    }
+
+    return modelConfig;
+}
+
+function createGoogleModel(modelConfig) {
+    if (!process.env.GEMINI_API_KEY) {
+        throw new AiServiceError("GEMINI_API_KEY is missing.", 500);
+    }
+
+    return new ChatGoogleGenerativeAI({
+        apiKey: process.env.GEMINI_API_KEY,
+        model: modelConfig.model,
+        temperature: TEMPERATURE,
+        topP: TOP_P,
+        maxOutputTokens: MAX_TOKENS
     });
+}
+
+function createOllamaModel(modelConfig) {
+    return new ChatOpenAI({
+        apiKey: "ollama",
+        model: modelConfig.model,
+        temperature: TEMPERATURE,
+        topP: TOP_P,
+        maxTokens: MAX_TOKENS,
+        useResponsesApi: false,
+        configuration: {
+            baseURL: getOllamaBaseUrl()
+        }
+    });
+}
+
+function getChatModel(modelConfig) {
+    if (modelConfig.provider === "google") {
+        return createGoogleModel(modelConfig);
+    }
+
+    if (modelConfig.provider === "ollama") {
+        return createOllamaModel(modelConfig);
+    }
+
+    throw new AiServiceError("Unsupported model provider.", 500);
+}
+
+function requireMessage(message) {
+    const text = String(message || "").trim();
+
+    if (!text) {
+        throw new AiServiceError("Message is required.", 400);
+    }
+
+    return text;
 }
 
 function getTitle(message) {
@@ -48,17 +149,19 @@ function cleanText(content) {
 }
 
 function buildMessages(message, history = []) {
-    const messages = [ new SystemMessage(SYSTEM_PROMPT) ];
+    const messages = [];
 
     for (const item of history) {
-        if (!item?.content?.trim()) {
+        const text = String(item?.content || "").trim();
+
+        if (!text) {
             continue;
         }
 
         messages.push(
             item.role === "ai"
-                ? new AIMessage(item.content.trim())
-                : new HumanMessage(item.content.trim())
+                ? new AIMessage(text)
+                : new HumanMessage(text)
         );
     }
 
@@ -66,20 +169,20 @@ function buildMessages(message, history = []) {
     return messages;
 }
 
-function requireMessage(message) {
-    const text = String(message || "").trim();
+function splitText(text, size = 24) {
+    const chunks = [];
 
-    if (!text) {
-        throw new AiServiceError("Message is required.", 400);
+    for (let index = 0; index < text.length; index += size) {
+        chunks.push(text.slice(index, index + size));
     }
 
-    return text;
+    return chunks;
 }
 
-function createReply(model, text, title) {
+function createReply(modelConfig, text, title) {
     return {
-        provider: PROVIDER,
-        model,
+        provider: modelConfig.provider,
+        model: modelConfig.model,
         title,
         text,
         fallbackUsed: false,
@@ -87,7 +190,26 @@ function createReply(model, text, title) {
     };
 }
 
-function formatError(error) {
+function throwIfAborted(signal) {
+    if (signal?.aborted) {
+        throw new AiServiceError("AI request was cancelled.", 504);
+    }
+}
+
+async function getResponseText({ message, history = [], model, signal }) {
+    const modelConfig = requireModelConfig(model);
+    const response = await getChatModel(modelConfig).invoke(
+        buildMessages(message, history),
+        { signal }
+    );
+
+    return {
+        modelConfig,
+        text: cleanText(response.content)
+    };
+}
+
+function formatError(error, modelConfig = null) {
     if (error instanceof AiServiceError) {
         return error;
     }
@@ -96,20 +218,38 @@ function formatError(error) {
         return new AiServiceError("AI request was cancelled.", 504);
     }
 
-    return new AiServiceError(error?.message || "Failed to generate AI response.", 502);
+    const message = String(error?.message || "");
+
+    if (modelConfig?.provider === "ollama") {
+        if (
+            message.includes("ECONNREFUSED") ||
+            message.includes("fetch failed") ||
+            message.includes("connection refused")
+        ) {
+            return new AiServiceError("Ollama is not running. Start Ollama and try again.", 502);
+        }
+
+        if (message.includes("model") && message.includes("not found")) {
+            return new AiServiceError(`Pull ${modelConfig.model} in Ollama first, then try again.`, 502);
+        }
+    }
+
+    if (modelConfig?.provider === "google" && /api key/i.test(message)) {
+        return new AiServiceError("Gemini API key is not working. Check GEMINI_API_KEY.", 502);
+    }
+
+    return new AiServiceError(message || "Failed to generate AI response.", 502);
 }
 
 export function getAvailableModels() {
-    return [
-        {
-            alias: MODEL,
-            model: MODEL,
-            label: MODEL,
-            provider: PROVIDER,
-            apiKeyEnvVar: "OPENAI_API_KEY",
-            isDefault: true
-        }
-    ];
+    return CHAT_MODELS.map((model) => ({
+        alias: model.alias,
+        model: model.model,
+        label: model.label,
+        provider: model.provider,
+        apiKeyEnvVar: model.apiKeyEnvVar,
+        isDefault: model.isDefault
+    }));
 }
 
 export async function generateChatReply({
@@ -119,20 +259,22 @@ export async function generateChatReply({
     model
 }) {
     const userMessage = requireMessage(message);
-    const modelName = model || MODEL;
+    const modelConfig = requireModelConfig(model);
 
     try {
-        const chatModel = getChatModel(modelName);
-        const response = await chatModel.invoke(buildMessages(userMessage, history));
-        const text = cleanText(response.content);
+        const result = await getResponseText({
+            message: userMessage,
+            history,
+            model: modelConfig.alias
+        });
 
-        if (!text) {
+        if (!result.text) {
             throw new AiServiceError("AI returned an empty response.", 502);
         }
 
-        return createReply(modelName, text, generateTitle ? getTitle(userMessage) : null);
+        return createReply(result.modelConfig, result.text, generateTitle ? getTitle(userMessage) : null);
     } catch (error) {
-        throw formatError(error);
+        throw formatError(error, modelConfig);
     }
 }
 
@@ -144,14 +286,14 @@ export async function* streamChatReply({
     signal
 }) {
     const userMessage = requireMessage(message);
-    const modelName = model || MODEL;
+    const modelConfig = requireModelConfig(model);
     const title = generateTitle ? getTitle(userMessage) : null;
 
     yield {
         type: "meta",
         data: {
-            provider: PROVIDER,
-            model: modelName,
+            provider: modelConfig.provider,
+            model: modelConfig.model,
             title,
             fallbackUsed: false,
             fallbackFrom: null
@@ -159,39 +301,36 @@ export async function* streamChatReply({
     };
 
     try {
-        const chatModel = getChatModel(modelName);
-        const stream = await chatModel.stream(buildMessages(userMessage, history), { signal });
-        let fullText = "";
+        throwIfAborted(signal);
 
-        for await (const chunk of stream) {
-            const text = getText(chunk?.content)
-                .replace(/<think>[\s\S]*?<\/think>/gi, "")
-                .replace(/<\/?think>/gi, "");
+        const result = await getResponseText({
+            message: userMessage,
+            history,
+            model: modelConfig.alias,
+            signal
+        });
 
-            if (!text) {
-                continue;
-            }
-
-            fullText += text;
-            yield { type: "token", data: { text } };
+        if (!result.text) {
+            throw new AiServiceError("AI returned an empty response.", 502);
         }
 
-        if (!fullText.trim()) {
-            throw new AiServiceError("AI returned an empty response.", 502);
+        for (const chunk of splitText(result.text)) {
+            throwIfAborted(signal);
+            yield { type: "token", data: { text: chunk } };
         }
 
         yield {
             type: "done",
             data: {
-                provider: PROVIDER,
-                model: modelName,
+                provider: result.modelConfig.provider,
+                model: result.modelConfig.model,
                 title,
-                text: fullText,
+                text: result.text,
                 fallbackUsed: false,
                 fallbackFrom: null
             }
         };
     } catch (error) {
-        throw formatError(error);
+        throw formatError(error, modelConfig);
     }
 }

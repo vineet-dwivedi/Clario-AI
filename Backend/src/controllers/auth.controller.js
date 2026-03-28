@@ -4,6 +4,14 @@ import { sendEmail } from "../services/mail.service.js";
 
 const SERVER_URL = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 5000}`;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
+const isProduction = process.env.NODE_ENV === "production";
+const AUTH_COOKIE_OPTIONS = {
+    httpOnly: true,
+    sameSite: isProduction ? "none" : "lax",
+    secure: isProduction,
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60 * 1000
+};
 
 function createToken(payload, expiresIn) {
     return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn });
@@ -29,7 +37,16 @@ function getVerificationUrl(token) {
     return `${SERVER_URL}/api/auth/verify-email?token=${token}`;
 }
 
-async function sendWelcomeEmail(user) {
+function buildVerificationData(email) {
+    const token = createToken({ email }, "1d");
+
+    return {
+        token,
+        url: getVerificationUrl(token)
+    };
+}
+
+async function sendWelcomeEmail(user, verificationUrl) {
     await sendEmail({
         to: user.email,
         subject: "Welcome to Clario-AI!",
@@ -37,7 +54,7 @@ async function sendWelcomeEmail(user) {
             <p>Hi ${user.username},</p>
             <p>Thank you for registering at <strong>Clario</strong>.</p>
             <p>Please verify your email address:</p>
-            <a href="${getVerificationUrl(createToken({ email: user.email }, "1d"))}">
+            <a href="${verificationUrl}">
                 Verify Email
             </a>
         `
@@ -56,17 +73,23 @@ export async function register(req, res) {
         }
 
         const user = await userModel.create({ username, email, password });
+        const verification = buildVerificationData(user.email);
+        let emailSent = false;
 
         try {
-            await sendWelcomeEmail(user);
+            await sendWelcomeEmail(user, verification.url);
+            emailSent = true;
         } catch (error) {
             console.error("Welcome email could not be sent:", error?.message || error);
+            console.log(`Verification URL for ${user.email}: ${verification.url}`);
         }
 
         return res.status(201).json({
             success: true,
             message: "User registered successfully",
-            user: formatUser(user)
+            user: formatUser(user),
+            emailSent,
+            verificationUrl: !isProduction ? verification.url : undefined
         });
     } catch (error) {
         console.error("Register error:", error);
@@ -123,10 +146,7 @@ export async function login(req, res) {
             "7d"
         );
 
-        res.cookie("token", token, {
-            httpOnly: true,
-            sameSite: "lax"
-        });
+        res.cookie("token", token, AUTH_COOKIE_OPTIONS);
 
         return res.status(200).json({
             success: true,
@@ -159,7 +179,12 @@ export async function getme(req, res) {
 }
 
 export function logout(req, res) {
-    res.clearCookie("token");
+    res.clearCookie("token", {
+        httpOnly: true,
+        sameSite: isProduction ? "none" : "lax",
+        secure: isProduction,
+        path: "/"
+    });
 
     return res.status(200).json({
         success: true,

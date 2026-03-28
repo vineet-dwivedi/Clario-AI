@@ -44,6 +44,7 @@ function DashboardPage() {
       {page.hasActiveThread ? (
         <DashboardThread
           avatarLabel={page.avatarLabel}
+          chatModels={page.chatModels}
           conversationEndRef={page.conversationEndRef}
           draft={page.draft}
           isSidebarOpen={page.isSidebarOpen}
@@ -53,8 +54,10 @@ function DashboardPage() {
           onChange={page.handleDraftChange}
           onMenuToggle={page.handleMenuToggle}
           onModeChange={page.handleComposerModeChange}
+          onModelChange={page.handleChatModelChange}
           onStartNewThread={page.handleStartNewThread}
           onSubmit={page.handleSubmit}
+          selectedModel={page.selectedChatModel}
           statusError={page.statusError}
           threadTitle={page.threadTitle}
           username={page.username}
@@ -62,6 +65,7 @@ function DashboardPage() {
       ) : (
         <DashboardWelcome
           avatarLabel={page.avatarLabel}
+          chatModels={page.chatModels}
           draft={page.draft}
           isSidebarOpen={page.isSidebarOpen}
           isStreaming={page.isStreaming}
@@ -69,8 +73,10 @@ function DashboardPage() {
           onChange={page.handleDraftChange}
           onMenuToggle={page.handleMenuToggle}
           onModeChange={page.handleComposerModeChange}
+          onModelChange={page.handleChatModelChange}
           onSubmit={page.handleSubmit}
           onSuggestionClick={page.handleSuggestionClick}
+          selectedModel={page.selectedChatModel}
           statusError={page.statusError}
           username={page.username}
         />

@@ -5,6 +5,7 @@ import PromptComposer from './PromptComposer'
 
 function DashboardThread({
   avatarLabel,
+  chatModels,
   conversationEndRef,
   draft,
   isSidebarOpen,
@@ -14,8 +15,10 @@ function DashboardThread({
   onChange,
   onMenuToggle,
   onModeChange,
+  onModelChange,
   onStartNewThread,
   onSubmit,
+  selectedModel,
   statusError,
   threadTitle,
   username,
@@ -50,17 +53,19 @@ function DashboardThread({
         </div>
 
         <PromptComposer
+          chatModels={chatModels}
           docked
           draft={draft}
           isSending={isStreaming}
           mode={mode}
           onChange={onChange}
           onModeChange={onModeChange}
+          onModelChange={onModelChange}
           onSubmit={onSubmit}
+          selectedModel={selectedModel}
         />
       </main>
     </div>
   )
 }
-
 export default DashboardThread

@@ -3,7 +3,18 @@ import { SparkleIcon } from '../../../../auth/components/AuthIcons'
 import { COMPOSER_MODE } from '../constants'
 import { ArrowRightIcon, ImageIcon, MicIcon, SearchIcon } from './DashboardIcons'
 
-function PromptComposer({ draft, isSending, mode, onChange, onModeChange, onSubmit, docked = false }) {
+function PromptComposer({
+  chatModels = [],
+  draft,
+  isSending,
+  mode,
+  onChange,
+  onModeChange,
+  onModelChange,
+  onSubmit,
+  selectedModel = '',
+  docked = false,
+}) {
   const formRef = useRef(null)
   const textareaRef = useRef(null)
   const maxTextareaHeight = 220
@@ -38,7 +49,7 @@ function PromptComposer({ draft, isSending, mode, onChange, onModeChange, onSubm
 
   useEffect(() => {
     resizeTextarea()
-  }, [draft, mode, docked])
+  }, [draft, mode, docked, selectedModel])
 
   useEffect(() => {
     if (!docked || !formRef.current) {
@@ -104,6 +115,26 @@ function PromptComposer({ draft, isSending, mode, onChange, onModeChange, onSubm
             <span>Free Image</span>
           </button>
         </div>
+
+        {mode === COMPOSER_MODE.CHAT && chatModels.length > 0 ? (
+          <div className="dashboard-composer__select-wrap">
+            <label className="sr-only" htmlFor={docked ? 'dashboard-model-docked' : 'dashboard-model'}>
+              Select chat model
+            </label>
+            <select
+              className="dashboard-composer__select"
+              id={docked ? 'dashboard-model-docked' : 'dashboard-model'}
+              onChange={(event) => onModelChange?.(event.target.value)}
+              value={selectedModel}
+            >
+              {chatModels.map((chatModel) => (
+                <option key={chatModel.alias} value={chatModel.alias}>
+                  {chatModel.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
       </div>
 
       <div className="dashboard-composer__field">

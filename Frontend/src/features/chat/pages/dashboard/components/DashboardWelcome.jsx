@@ -6,6 +6,7 @@ import SuggestionGrid from './SuggestionGrid'
 
 function DashboardWelcome({
   avatarLabel,
+  chatModels,
   draft,
   isSidebarOpen,
   isStreaming,
@@ -13,8 +14,10 @@ function DashboardWelcome({
   onChange,
   onMenuToggle,
   onModeChange,
+  onModelChange,
   onSubmit,
   onSuggestionClick,
+  selectedModel,
   statusError,
   username,
 }) {
@@ -40,12 +43,15 @@ function DashboardWelcome({
         {statusError ? <p className="dashboard-thread__status dashboard-thread__status--error">{statusError}</p> : null}
 
         <PromptComposer
+          chatModels={chatModels}
           draft={draft}
           isSending={isStreaming}
           mode={mode}
           onChange={onChange}
           onModeChange={onModeChange}
+          onModelChange={onModelChange}
           onSubmit={onSubmit}
+          selectedModel={selectedModel}
         />
 
         <SuggestionGrid onSuggestionClick={onSuggestionClick} suggestions={suggestionPrompts} />

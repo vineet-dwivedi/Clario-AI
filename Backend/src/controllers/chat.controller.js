@@ -315,7 +315,8 @@ export async function sendStreamMessage(req, res) {
         const abortController = new AbortController();
 
         handleClose = () => abortController.abort();
-        req.on("close", handleClose);
+        req.on("aborted", handleClose);
+        res.on("close", handleClose);
 
         res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
         res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -388,7 +389,8 @@ export async function sendStreamMessage(req, res) {
         return sendError(res, error, "Failed to generate AI response.");
     } finally {
         if (handleClose) {
-            req.off("close", handleClose);
+            req.off("aborted", handleClose);
+            res.off("close", handleClose);
         }
     }
 }

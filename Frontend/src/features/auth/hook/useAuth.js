@@ -2,6 +2,8 @@ import { useDispatch } from 'react-redux'
 import { login, register, getme, logout } from '../service/auth.api'
 import { setUser, setError, setInitialized, setLoading } from '../auth.slice'
 
+const AUTH_SESSION_KEY = 'lumina_has_session'
+
 // Keeps the UI layer simple by turning backend responses into Redux state updates.
 /**
  * Builds a readable error message from backend responses or network failures.
@@ -14,6 +16,24 @@ const getApiErrorMessage = (error, fallbackMessage) => {
 }
 
 const isUnauthorizedError = (error) => error?.response?.status === 401
+
+const getStorage = () => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  return window.localStorage
+}
+
+const saveSessionHint = () => {
+  getStorage()?.setItem(AUTH_SESSION_KEY, 'true')
+}
+
+const clearSessionHint = () => {
+  getStorage()?.removeItem(AUTH_SESSION_KEY)
+}
+
+const hasSessionHint = () => getStorage()?.getItem(AUTH_SESSION_KEY) === 'true'
 
 /**
  * Login currently returns `userrname` while other endpoints use `username`.
@@ -66,10 +86,12 @@ export function useAuth() {
       dispatch(setLoading(true))
       dispatch(setError(null))
       const data = await login({ email, password })
+      saveSessionHint()
       dispatch(setUser(normalizeUser(data.user)))
       dispatch(setInitialized(true))
       return data
     } catch (error) {
+      clearSessionHint()
       dispatch(setError(getApiErrorMessage(error, 'Login failed')))
       return null
     } finally {
@@ -85,9 +107,11 @@ export function useAuth() {
       dispatch(setLoading(true))
       dispatch(setError(null))
       const data = await getme()
+      saveSessionHint()
       dispatch(setUser(normalizeUser(data.user)))
       return data
     } catch (error) {
+      clearSessionHint()
       dispatch(setUser(null))
 
       if (!isUnauthorizedError(error)) {
@@ -99,6 +123,22 @@ export function useAuth() {
       dispatch(setLoading(false))
       dispatch(setInitialized(true))
     }
+  }
+
+  /**
+   * Initializes auth state when the app starts.
+   * Logged-out visitors skip the backend call, while returning users still refresh from the server.
+   */
+  async function handleAppStart() {
+    if (!hasSessionHint()) {
+      dispatch(setError(null))
+      dispatch(setUser(null))
+      dispatch(setLoading(false))
+      dispatch(setInitialized(true))
+      return null
+    }
+
+    return handleGetme()
   }
 
   /**
@@ -117,11 +157,12 @@ export function useAuth() {
 
       return false
     } finally {
+      clearSessionHint()
       dispatch(setUser(null))
       dispatch(setLoading(false))
       dispatch(setInitialized(true))
     }
   }
 
-  return { handleGetme, handleLogin, handleLogout, handleRegister }
+  return { handleAppStart, handleGetme, handleLogin, handleLogout, handleRegister }
 }

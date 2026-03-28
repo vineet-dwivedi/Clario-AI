@@ -10,7 +10,7 @@ import {
   fetchChats,
   setCurrentChatId,
 } from '../../chat.slice'
-import { generateImage, streamMessage } from '../../service/chat.api'
+import { generateImage, getModels, streamMessage } from '../../service/chat.api'
 import { COMPOSER_MODE } from './constants'
 import { buildVisibleMessages, getInitialTheme } from './helpers'
 
@@ -21,7 +21,9 @@ export function useDashboardPage() {
   const { loading: isAuthLoading, user } = useSelector((state) => state.auth)
   const { chats, currentChatId, error, isDeleting, isLoading, messagesByChatId } = useSelector((state) => state.chat)
   const [draft, setDraft] = useState('')
+  const [chatModels, setChatModels] = useState([])
   const [composerMode, setComposerMode] = useState(COMPOSER_MODE.CHAT)
+  const [selectedChatModel, setSelectedChatModel] = useState('')
   const [deletingChatId, setDeletingChatId] = useState(null)
   const [streamState, setStreamState] = useState(null)
   const [streamError, setStreamError] = useState('')
@@ -44,6 +46,46 @@ export function useDashboardPage() {
       dispatch(fetchChats())
     }
   }, [dispatch, user])
+
+  useEffect(() => {
+    if (!user) {
+      setChatModels([])
+      setSelectedChatModel('')
+      return undefined
+    }
+
+    let cancelled = false
+
+    const loadModels = async () => {
+      try {
+        const response = await getModels()
+        const nextChatModels = (response.data || []).filter((model) => model.capability === 'chat')
+
+        if (cancelled) {
+          return
+        }
+
+        setChatModels(nextChatModels)
+        setSelectedChatModel((currentModel) => {
+          if (currentModel && nextChatModels.some((model) => model.alias === currentModel)) {
+            return currentModel
+          }
+
+          return nextChatModels.find((model) => model.isDefault)?.alias || nextChatModels[0]?.alias || ''
+        })
+      } catch {
+        if (!cancelled) {
+          setChatModels([])
+        }
+      }
+    }
+
+    loadModels()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user])
 
   useEffect(() => {
     return () => {
@@ -148,6 +190,10 @@ export function useDashboardPage() {
 
   function handleComposerModeChange(nextMode) {
     setComposerMode(nextMode)
+  }
+
+  function handleChatModelChange(nextModel) {
+    setSelectedChatModel(nextModel)
   }
 
   function handleThemeToggle() {
@@ -332,6 +378,7 @@ export function useDashboardPage() {
       await streamMessage({
         chatId: currentChatId,
         message: prompt,
+        model: selectedChatModel || undefined,
         signal: abortController.signal,
         onEvent: ({ event, data }) => {
           if (event === 'meta') {
@@ -428,6 +475,7 @@ export function useDashboardPage() {
 
   return {
     avatarLabel,
+    chatModels,
     chats,
     composerMode,
     conversationEndRef,
@@ -442,12 +490,14 @@ export function useDashboardPage() {
     isStreaming,
     isThemeTransitioning,
     nextTheme,
+    selectedChatModel,
     statusError,
     theme,
     threadTitle,
     username,
     visibleMessages,
     handleComposerModeChange,
+    handleChatModelChange,
     handleDeleteChat,
     handleDraftChange: setDraft,
     handleLogoutClick,

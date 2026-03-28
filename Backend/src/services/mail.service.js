@@ -31,11 +31,19 @@ function createAppPasswordTransporter() {
 }
 
 async function createOAuthTransporter() {
-    const oauth2Client = new OAuth2Client(googleClientId, googleClientSecret);
-    oauth2Client.setCredentials({ refresh_token: googleRefreshToken });
+    let accessToken = null;
 
-    const tokenResponse = await oauth2Client.getAccessToken();
-    const accessToken = typeof tokenResponse === "string" ? tokenResponse : tokenResponse?.token;
+    try {
+        const oauth2Client = new OAuth2Client(googleClientId, googleClientSecret);
+        oauth2Client.setCredentials({ refresh_token: googleRefreshToken });
+
+        const tokenResponse = await oauth2Client.getAccessToken();
+        accessToken = typeof tokenResponse === "string" ? tokenResponse : tokenResponse?.token;
+    } catch (error) {
+        throw new Error(
+            `Gmail OAuth setup failed. Check GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN. ${error?.message || ""}`.trim()
+        );
+    }
 
     if (!accessToken) {
         throw new Error("Could not create a Gmail access token.");

@@ -1,6 +1,7 @@
 import { io } from 'socket.io-client'
+import { API_BASE_URL } from '../../../app/api.base'
 
-const SOCKET_URL = 'http://localhost:5000'
+const SOCKET_URL = API_BASE_URL
 
 let socket = null
 

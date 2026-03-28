@@ -1,6 +1,5 @@
 import axios from 'axios'
-
-const API_BASE_URL = 'http://localhost:5000'
+import { API_BASE_URL } from '../../../app/api.base'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -67,6 +66,10 @@ export async function streamMessage({ chatId, message, model, onEvent, signal })
   })
 
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('Session expired. Please log in again.')
+    }
+
     throw new Error(await getJsonErrorMessage(response))
   }
 

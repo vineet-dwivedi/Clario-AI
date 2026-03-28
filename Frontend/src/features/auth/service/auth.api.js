@@ -1,8 +1,9 @@
 import axios from 'axios'
+import { API_BASE_URL } from '../../../app/api.base'
 
 // Shared Axios client for auth requests. Cookies stay enabled for session-based auth.
 const api = axios.create({
-  baseURL: 'http://localhost:5000',
+  baseURL: API_BASE_URL,
   withCredentials: true,
 })
 
