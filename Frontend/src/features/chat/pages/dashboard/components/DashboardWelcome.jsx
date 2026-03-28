@@ -5,27 +5,29 @@ import PromptComposer from './PromptComposer'
 import SuggestionGrid from './SuggestionGrid'
 
 function DashboardWelcome({
+  avatar,
   avatarLabel,
+  canSubmit,
   chatModels,
   draft,
   isListeningToVoice,
   isSidebarOpen,
   isStreaming,
   isVoiceInputSupported,
-  isVoicePlaybackSupported,
-  isVoiceReplyEnabled,
-  isVoiceSpeaking,
   isVoiceTranscribing,
   mode,
   onChange,
+  onFilesSelected,
   onMenuToggle,
   onModeChange,
   onModelChange,
+  onOpenProfile,
+  onRemoveFile,
   onSubmit,
   onSuggestionClick,
   onVoiceInputToggle,
-  onVoiceReplyToggle,
   selectedModel,
+  selectedFiles,
   statusError,
   username,
   voiceStatus,
@@ -34,10 +36,12 @@ function DashboardWelcome({
     <div className="dashboard-shell">
       <DashboardTopbar
         actionLabel="Chats"
+        avatar={avatar}
         avatarLabel={avatarLabel}
         isSidebarOpen={isSidebarOpen}
         onAction={onMenuToggle}
         onMenuToggle={onMenuToggle}
+        onProfileOpen={onOpenProfile}
         username={username}
       />
 
@@ -52,23 +56,23 @@ function DashboardWelcome({
         {statusError ? <p className="dashboard-thread__status dashboard-thread__status--error">{statusError}</p> : null}
 
         <PromptComposer
+          canSubmit={canSubmit}
           chatModels={chatModels}
           draft={draft}
           isListening={isListeningToVoice}
           isSending={isStreaming}
           isVoiceInputSupported={isVoiceInputSupported}
-          isVoicePlaybackSupported={isVoicePlaybackSupported}
-          isVoiceReplyEnabled={isVoiceReplyEnabled}
-          isVoiceSpeaking={isVoiceSpeaking}
           isVoiceTranscribing={isVoiceTranscribing}
           mode={mode}
           onChange={onChange}
+          onFilesSelected={onFilesSelected}
           onModeChange={onModeChange}
           onModelChange={onModelChange}
+          onRemoveFile={onRemoveFile}
           onSubmit={onSubmit}
           onVoiceInputToggle={onVoiceInputToggle}
-          onVoiceReplyToggle={onVoiceReplyToggle}
           selectedModel={selectedModel}
+          selectedFiles={selectedFiles}
           voiceStatus={voiceStatus}
         />
 

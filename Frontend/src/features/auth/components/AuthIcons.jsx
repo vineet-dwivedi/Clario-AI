@@ -9,14 +9,26 @@ export const SparkleIcon = ({ className }) => (
     xmlns="http://www.w3.org/2000/svg"
   >
     <path
-      d="M12 3.5L13.55 8.45L18.5 10L13.55 11.55L12 16.5L10.45 11.55L5.5 10L10.45 8.45L12 3.5Z"
+      d="M6 7.5C6 6.4 6.9 5.5 8 5.5H15.2C16 5.5 16.75 5.88 17.23 6.52L18.7 8.48C19.09 9 19.3 9.64 19.3 10.29V16C19.3 17.1 18.4 18 17.3 18H8C6.9 18 6 17.1 6 16V7.5Z"
       stroke="currentColor"
       strokeLinecap="round"
       strokeLinejoin="round"
       strokeWidth="1.7"
     />
     <path
-      d="M18.5 4.5L18.97 6.03L20.5 6.5L18.97 6.97L18.5 8.5L18.03 6.97L16.5 6.5L18.03 6.03L18.5 4.5Z"
+      d="M8.8 10.2H15.9"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeWidth="1.7"
+    />
+    <path
+      d="M8.8 13.4H13.6"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeWidth="1.7"
+    />
+    <path
+      d="M16.8 3.8L17.23 5.17L18.6 5.6L17.23 6.03L16.8 7.4L16.37 6.03L15 5.6L16.37 5.17L16.8 3.8Z"
       fill="currentColor"
     />
   </svg>

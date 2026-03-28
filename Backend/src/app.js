@@ -39,4 +39,22 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/chats", chatRouter);
 
+app.use((error, req, res, next) => {
+    if (!error) {
+        return next();
+    }
+
+    if (error.name === "MulterError") {
+        return res.status(400).json({
+            success: false,
+            message: error.message || "File upload failed."
+        });
+    }
+
+    return res.status(400).json({
+        success: false,
+        message: error.message || "Request failed."
+    });
+});
+
 export default app;

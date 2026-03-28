@@ -3,7 +3,7 @@ import { Outlet } from 'react-router-dom'
 
 import { MoonIcon, SunIcon } from '../components/AuthIcons'
 
-const STORAGE_KEY = 'perplexity-auth-theme'
+const STORAGE_KEY = 'clario-ai-theme'
 
 // Read the saved theme first, then fall back to the user's system preference.
 const getInitialTheme = () => {

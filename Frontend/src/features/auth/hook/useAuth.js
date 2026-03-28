@@ -1,8 +1,8 @@
 import { useDispatch } from 'react-redux'
-import { login, register, getme, logout } from '../service/auth.api'
+import { login, register, getme, logout, updateProfile } from '../service/auth.api'
 import { setUser, setError, setInitialized, setLoading } from '../auth.slice'
 
-const AUTH_SESSION_KEY = 'lumina_has_session'
+const AUTH_SESSION_KEY = 'clario_ai_has_session'
 
 // Keeps the UI layer simple by turning backend responses into Redux state updates.
 /**
@@ -164,5 +164,25 @@ export function useAuth() {
     }
   }
 
-  return { handleAppStart, handleGetme, handleLogin, handleLogout, handleRegister }
+  /**
+   * Updates the current user's profile and keeps Redux in sync.
+   * @param {{ username: string, avatarFile?: File | null }} payload
+   */
+  async function handleUpdateProfile({ username, avatarFile }) {
+    try {
+      dispatch(setLoading(true))
+      dispatch(setError(null))
+      const data = await updateProfile({ username, avatarFile })
+      dispatch(setUser(normalizeUser(data.user)))
+      dispatch(setInitialized(true))
+      return data
+    } catch (error) {
+      dispatch(setError(getApiErrorMessage(error, 'Profile update failed')))
+      return null
+    } finally {
+      dispatch(setLoading(false))
+    }
+  }
+
+  return { handleAppStart, handleGetme, handleLogin, handleLogout, handleRegister, handleUpdateProfile }
 }

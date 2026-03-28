@@ -29,8 +29,19 @@ function formatUser(user) {
     return {
         id: user._id,
         username: user.username,
-        email: user.email
+        email: user.email,
+        avatar: user.avatar || ""
     };
+}
+
+function toAvatarDataUrl(file) {
+    if (!file?.buffer?.length) {
+        return "";
+    }
+
+    const mimeType = String(file.mimetype || "application/octet-stream");
+    const base64 = Buffer.from(file.buffer).toString("base64");
+    return `data:${mimeType};base64,${base64}`;
 }
 
 function getVerificationUrl(token) {
@@ -49,7 +60,7 @@ function buildVerificationData(email) {
 async function sendWelcomeEmail(user, verificationUrl) {
     await sendEmail({
         to: user.email,
-        subject: "Welcome to Clario-AI!",
+        subject: "Welcome to Clario AI!",
         html: `
             <p>Hi ${user.username},</p>
             <p>Thank you for registering at <strong>Clario</strong>.</p>
@@ -174,6 +185,48 @@ export async function getme(req, res) {
         });
     } catch (error) {
         console.error("Get me error:", error);
+        return sendError(res, 500, "Internal server error");
+    }
+}
+
+export async function updateProfile(req, res) {
+    try {
+        const user = await userModel.findById(req.user.id);
+
+        if (!user) {
+            return sendError(res, 404, "User not found", "User not found");
+        }
+
+        const nextUsername = String(req.body.username || "").trim();
+
+        if (!nextUsername) {
+            return sendError(res, 400, "Username is required.");
+        }
+
+        const existingUser = await userModel.findOne({
+            username: nextUsername,
+            _id: { $ne: user._id }
+        });
+
+        if (existingUser) {
+            return sendError(res, 400, "That username is already in use.");
+        }
+
+        user.username = nextUsername;
+
+        if (req.file) {
+            user.avatar = toAvatarDataUrl(req.file);
+        }
+
+        await user.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Profile updated successfully",
+            user: formatUser(user)
+        });
+    } catch (error) {
+        console.error("Update profile error:", error);
         return sendError(res, 500, "Internal server error");
     }
 }

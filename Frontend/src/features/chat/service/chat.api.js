@@ -14,6 +14,25 @@ function buildPayload({ chatId, message, model }) {
   }
 }
 
+function buildChatFormData({ chatId, message, model, files = [] }) {
+  const formData = new FormData()
+  formData.append('message', message || '')
+
+  if (chatId) {
+    formData.append('chatId', chatId)
+  }
+
+  if (model) {
+    formData.append('model', model)
+  }
+
+  for (const file of files) {
+    formData.append('files', file)
+  }
+
+  return formData
+}
+
 async function getJsonErrorMessage(response) {
   try {
     const data = await response.json()
@@ -34,7 +53,7 @@ export async function getChatMessages(chatId) {
 }
 
 export async function sendMessage(payload) {
-  const response = await api.post('/api/chats/message', buildPayload(payload))
+  const response = await api.post('/api/chats/message', buildChatFormData(payload))
   return response.data
 }
 
@@ -53,15 +72,14 @@ export async function getModels() {
   return response.data
 }
 
-export async function streamMessage({ chatId, message, model, onEvent, signal }) {
+export async function streamMessage({ chatId, files = [], message, model, onEvent, signal }) {
   const response = await fetch(`${API_BASE_URL}/api/chats/message/stream`, {
     method: 'POST',
     credentials: 'include',
     headers: {
       Accept: 'text/event-stream',
-      'Content-Type': 'application/json',
     },
-    body: JSON.stringify(buildPayload({ chatId, message, model })),
+    body: buildChatFormData({ chatId, message, model, files }),
     signal,
   })
 

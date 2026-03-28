@@ -10,6 +10,7 @@ import {
     transcribeVoiceMessage
 } from "../controllers/chat.controller.js";
 import { authUser } from "../middleware/auth.middleware.js";
+import { chatUpload } from "../middleware/upload.middleware.js";
 
 const chatRouter = Router();
 
@@ -28,7 +29,7 @@ chatRouter.post(
     transcribeVoiceMessage
 );
 chatRouter.post("/image", sendImageMessage);
-chatRouter.post("/message", sendMessage);
-chatRouter.post("/message/stream", sendStreamMessage);
+chatRouter.post("/message", chatUpload.array("files", 6), sendMessage);
+chatRouter.post("/message/stream", chatUpload.array("files", 6), sendStreamMessage);
 
 export default chatRouter;

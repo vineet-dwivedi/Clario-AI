@@ -7,6 +7,7 @@ import {
     getAvailableModels,
     streamChatReply
 } from "../services/ai.service.js";
+import { prepareChatAttachments } from "../services/attachment.service.js";
 import { generateImage, getImageModel } from "../services/image.service.js";
 import { getVoiceModel, transcribeAudio } from "../services/voice.service.js";
 
@@ -44,6 +45,32 @@ function getMessageText(message) {
     return text;
 }
 
+function getOptionalMessageText(message) {
+    return String(message || "").trim();
+}
+
+function getChatPrompt(message, attachments = {}) {
+    const text = getOptionalMessageText(message);
+
+    if (text) {
+        return text;
+    }
+
+    if (attachments.context?.trim() && attachments.images?.length) {
+        return "Please summarize the uploaded files and answer using both the PDF and the images.";
+    }
+
+    if (attachments.context?.trim()) {
+        return "Please summarize the uploaded PDF clearly, highlight the important points, and answer based on it.";
+    }
+
+    if (attachments.images?.length) {
+        return "Please analyze the uploaded image in detail and help the user understand it.";
+    }
+
+    throw new AiServiceError("Message or file is required.", 400);
+}
+
 function formatChat(chat) {
     return {
         id: String(chat._id),
@@ -59,6 +86,7 @@ function formatMessage(message) {
         role: message.role,
         content: message.content,
         kind: message.kind || "text",
+        attachments: Array.isArray(message.attachments) ? message.attachments : [],
         images: Array.isArray(message.images) ? message.images : [],
         provider: message.provider || null,
         model: message.model || null,
@@ -130,6 +158,8 @@ async function saveMessage(chatId, role, content, options = {}) {
         role,
         content,
         kind: options.kind || "text",
+        context: options.context || "",
+        attachments: Array.isArray(options.attachments) ? options.attachments : [],
         images: normalizeImages(options.images),
         provider: options.provider || null,
         model: options.model || null
@@ -147,7 +177,7 @@ async function getChatHistory(chatId) {
         })
         .sort({ createdAt: -1 })
         .limit(20)
-        .select("role content")
+        .select("role content context attachments images")
         .lean();
 
     return messages.reverse();
@@ -237,15 +267,21 @@ export async function getModels(req, res) {
 export async function sendMessage(req, res) {
     try {
         const userId = getUserId(req);
-        const text = getMessageText(req.body.message);
+        const attachmentData = await prepareChatAttachments(req.files || []);
+        const text = getChatPrompt(req.body.message, attachmentData);
         const chat = await getOrCreateChat(userId, req.body.chatId);
         const history = await getChatHistory(chat._id);
-        const userMessage = await saveMessage(chat._id, "user", text);
+        const userMessage = await saveMessage(chat._id, "user", text, {
+            context: attachmentData.context,
+            attachments: attachmentData.attachments,
+            images: attachmentData.images
+        });
         const aiReply = await generateChatReply({
             message: text,
             history,
             generateTitle: chat.title === DEFAULT_CHAT_TITLE,
-            model: req.body.model
+            model: req.body.model,
+            attachments: attachmentData
         });
 
         await updateChatTitle(chat, aiReply.title);
@@ -337,10 +373,15 @@ export async function sendStreamMessage(req, res) {
 
     try {
         const userId = getUserId(req);
-        const text = getMessageText(req.body.message);
+        const attachmentData = await prepareChatAttachments(req.files || []);
+        const text = getChatPrompt(req.body.message, attachmentData);
         const chat = await getOrCreateChat(userId, req.body.chatId);
         const history = await getChatHistory(chat._id);
-        const userMessage = await saveMessage(chat._id, "user", text);
+        const userMessage = await saveMessage(chat._id, "user", text, {
+            context: attachmentData.context,
+            attachments: attachmentData.attachments,
+            images: attachmentData.images
+        });
         const abortController = new AbortController();
 
         handleClose = () => abortController.abort();
@@ -358,7 +399,8 @@ export async function sendStreamMessage(req, res) {
             history,
             generateTitle: chat.title === DEFAULT_CHAT_TITLE,
             model: req.body.model,
-            signal: abortController.signal
+            signal: abortController.signal,
+            attachments: attachmentData
         })) {
             if (event.type === "meta") {
                 await updateChatTitle(chat, event.data.title);

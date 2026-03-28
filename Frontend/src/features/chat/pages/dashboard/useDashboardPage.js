@@ -12,19 +12,87 @@ import {
 } from '../../chat.slice'
 import { generateImage, getModels, streamMessage } from '../../service/chat.api'
 import { COMPOSER_MODE } from './constants'
-import { buildVisibleMessages, getInitialTheme } from './helpers'
+import { buildVisibleMessages, getAvatarLabel, getInitialTheme } from './helpers'
 import { useVoiceAssistant } from './useVoiceAssistant'
+
+function createFileEntry(file) {
+  const isImage = String(file.type || '').startsWith('image/')
+
+  return {
+    id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
+    file,
+    name: file.name,
+    mimeType: file.type,
+    previewUrl: isImage ? URL.createObjectURL(file) : '',
+  }
+}
+
+function revokeFileEntries(fileEntries) {
+  fileEntries.forEach((entry) => {
+    if (entry.previewUrl) {
+      URL.revokeObjectURL(entry.previewUrl)
+    }
+  })
+}
+
+function buildPendingUserText(prompt, fileEntries) {
+  const text = String(prompt || '').trim()
+
+  if (text) {
+    return text
+  }
+
+  const hasPdf = fileEntries.some((fileEntry) => fileEntry.mimeType === 'application/pdf')
+  const hasImage = fileEntries.some((fileEntry) => fileEntry.mimeType.startsWith('image/'))
+
+  if (hasPdf && hasImage) {
+    return 'Analyze the uploaded PDF and image files.'
+  }
+
+  if (hasPdf) {
+    return 'Summarize the uploaded PDF.'
+  }
+
+  if (hasImage) {
+    return 'Analyze the uploaded image.'
+  }
+
+  return ''
+}
+
+function buildPendingAttachments(fileEntries) {
+  return fileEntries
+    .filter((fileEntry) => fileEntry.mimeType === 'application/pdf')
+    .map((fileEntry) => ({
+      name: fileEntry.name,
+      mimeType: fileEntry.mimeType,
+    }))
+}
+
+function buildPendingImages(fileEntries) {
+  return fileEntries
+    .filter((fileEntry) => fileEntry.mimeType.startsWith('image/'))
+    .map((fileEntry) => ({
+      mimeType: fileEntry.mimeType,
+      dataUrl: fileEntry.previewUrl,
+    }))
+}
+
+function isSupportedAttachment(file) {
+  return String(file?.type || '').startsWith('image/') || String(file?.type || '') === 'application/pdf'
+}
 
 export function useDashboardPage() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
-  const { handleLogout } = useAuth()
-  const { loading: isAuthLoading, user } = useSelector((state) => state.auth)
+  const { handleLogout, handleUpdateProfile } = useAuth()
+  const { user } = useSelector((state) => state.auth)
   const { chats, currentChatId, error, isDeleting, isLoading, messagesByChatId } = useSelector((state) => state.chat)
   const [draft, setDraft] = useState('')
   const [chatModels, setChatModels] = useState([])
   const [composerMode, setComposerMode] = useState(COMPOSER_MODE.CHAT)
   const [selectedChatModel, setSelectedChatModel] = useState('')
+  const [selectedFiles, setSelectedFiles] = useState([])
   const [deletingChatId, setDeletingChatId] = useState(null)
   const [streamState, setStreamState] = useState(null)
   const [streamError, setStreamError] = useState('')
@@ -32,30 +100,27 @@ export function useDashboardPage() {
   const [theme, setTheme] = useState(getInitialTheme)
   const [isThemeTransitioning, setIsThemeTransitioning] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [isProfileOpen, setIsProfileOpen] = useState(false)
+  const [isProfileSaving, setIsProfileSaving] = useState(false)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
   const transitionTimeoutRef = useRef(null)
   const conversationEndRef = useRef(null)
   const streamAbortRef = useRef(null)
-  const pendingVoiceReplyRef = useRef(false)
+  const pendingFileCleanupRef = useRef([])
+  const selectedFilesRef = useRef([])
   const {
     isListening,
-    isSpeaking,
     isTranscribing,
     isVoiceInputSupported,
-    isVoicePlaybackSupported,
-    isVoiceReplyEnabled,
-    resetSpokenReply,
-    speakReply,
     startListening,
     stopListening,
-    stopSpeaking,
-    toggleVoiceReplies,
     voiceError,
   } = useVoiceAssistant()
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
     document.documentElement.style.colorScheme = theme
-    window.localStorage.setItem('perplexity-auth-theme', theme)
+    window.localStorage.setItem('clario-ai-theme', theme)
   }, [theme])
 
   useEffect(() => {
@@ -105,8 +170,14 @@ export function useDashboardPage() {
   }, [user])
 
   useEffect(() => {
+    selectedFilesRef.current = selectedFiles
+  }, [selectedFiles])
+
+  useEffect(() => {
     return () => {
       streamAbortRef.current?.abort()
+      revokeFileEntries(selectedFilesRef.current)
+      revokeFileEntries(pendingFileCleanupRef.current)
 
       if (transitionTimeoutRef.current) {
         window.clearTimeout(transitionTimeoutRef.current)
@@ -118,42 +189,24 @@ export function useDashboardPage() {
   const activeMessages = currentChatId ? messagesByChatId[currentChatId] || [] : []
   const isStreaming = Boolean(streamState?.isStreaming)
   const hasActiveThread = Boolean(currentChatId || streamState)
-  const username = user?.username?.trim() || 'Lumina User'
-  const avatarLabel = username.slice(0, 2).toUpperCase()
+  const username = user?.username?.trim() || 'Clario AI User'
+  const avatarLabel = getAvatarLabel(username)
   const nextTheme = theme === 'light' ? 'dark' : 'light'
   const statusError = streamError || error
   const threadTitle = activeChat?.title || streamState?.title || 'New Chat'
   const visibleMessages = buildVisibleMessages(activeMessages, streamState, isStreaming)
+  const canSubmit = composerMode === COMPOSER_MODE.IMAGE ? Boolean(draft.trim()) : Boolean(draft.trim() || selectedFiles.length)
   const voiceStatus = voiceError
     ? voiceError
     : isListening
       ? 'Recording... tap the mic again when you are done.'
       : isTranscribing
         ? 'Turning your voice into text...'
-      : isSpeaking && isVoiceReplyEnabled
-        ? 'Reading the latest reply aloud.'
         : ''
 
   useEffect(() => {
     conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [activeMessages, currentChatId, streamState?.aiText, streamState?.aiImages?.length, streamState?.userMessage?.content])
-
-  useEffect(() => {
-    const latestAiMessage = [...visibleMessages]
-      .reverse()
-      .find((message) => message.role === 'ai' && !message.pending && String(message.content || '').trim())
-
-    if (!pendingVoiceReplyRef.current || !latestAiMessage) {
-      return
-    }
-
-    const replyKey = `${currentChatId || streamState?.chat?.id || 'draft'}:${latestAiMessage.id}:${latestAiMessage.content.length}`
-    speakReply({
-      key: replyKey,
-      text: latestAiMessage.content,
-    })
-    pendingVoiceReplyRef.current = false
-  }, [currentChatId, speakReply, streamState?.chat?.id, visibleMessages])
 
   useEffect(() => {
     if (!streamState?.aiBuffer) {
@@ -177,7 +230,7 @@ export function useDashboardPage() {
           return currentState
         }
 
-        const step = Math.max(1, Math.min(4, Math.ceil(currentState.aiBuffer.length / 28)))
+        const step = Math.max(1, Math.min(6, Math.ceil(currentState.aiBuffer.length / 28)))
         const nextChunk = currentState.aiBuffer.slice(0, step)
         const remainingBuffer = currentState.aiBuffer.slice(step)
 
@@ -217,6 +270,7 @@ export function useDashboardPage() {
       if (!cancelled) {
         setPendingHydrationChatId(null)
         setStreamState(null)
+        flushPendingFileCleanup()
       }
     }
 
@@ -227,12 +281,27 @@ export function useDashboardPage() {
     }
   }, [dispatch, pendingHydrationChatId, streamState?.aiBuffer, streamState?.isStreaming])
 
+  function clearSelectedFiles() {
+    setSelectedFiles((currentFiles) => {
+      revokeFileEntries(currentFiles)
+      return []
+    })
+  }
+
+  function flushPendingFileCleanup() {
+    revokeFileEntries(pendingFileCleanupRef.current)
+    pendingFileCleanupRef.current = []
+  }
+
   function handleSuggestionClick(label) {
     setDraft(label)
   }
 
   function handleComposerModeChange(nextMode) {
     setComposerMode(nextMode)
+    if (nextMode !== COMPOSER_MODE.CHAT) {
+      clearSelectedFiles()
+    }
   }
 
   function handleChatModelChange(nextModel) {
@@ -261,10 +330,44 @@ export function useDashboardPage() {
     setIsSidebarOpen(false)
   }
 
+  function handleProfileOpen() {
+    setIsProfileOpen(true)
+  }
+
+  function handleProfileClose() {
+    setIsProfileOpen(false)
+  }
+
+  function handleFilesSelected(files) {
+    const nextFiles = files.filter(isSupportedAttachment).slice(0, 6)
+
+    if (!nextFiles.length) {
+      return
+    }
+
+    setSelectedFiles((currentFiles) => {
+      const availableSlots = Math.max(0, 6 - currentFiles.length)
+      const fileEntries = nextFiles.slice(0, availableSlots).map(createFileEntry)
+      return [...currentFiles, ...fileEntries]
+    })
+  }
+
+  function handleRemoveFile(fileId) {
+    setSelectedFiles((currentFiles) => {
+      const nextFiles = currentFiles.filter((fileEntry) => fileEntry.id !== fileId)
+      const removedFile = currentFiles.find((fileEntry) => fileEntry.id === fileId)
+
+      if (removedFile?.previewUrl) {
+        URL.revokeObjectURL(removedFile.previewUrl)
+      }
+
+      return nextFiles
+    })
+  }
+
   async function handleThreadSelect(chatId) {
     streamAbortRef.current?.abort()
     streamAbortRef.current = null
-    pendingVoiceReplyRef.current = false
     setPendingHydrationChatId(null)
     dispatch(setCurrentChatId(chatId))
     dispatch(clearChatError())
@@ -272,7 +375,8 @@ export function useDashboardPage() {
     setStreamState(null)
     setIsSidebarOpen(false)
     stopListening()
-    stopSpeaking()
+    clearSelectedFiles()
+    flushPendingFileCleanup()
 
     if (!messagesByChatId[chatId]) {
       await dispatch(fetchChatMessages(chatId))
@@ -284,15 +388,14 @@ export function useDashboardPage() {
     setStreamError('')
     setStreamState(null)
     setPendingHydrationChatId(null)
-    pendingVoiceReplyRef.current = false
     streamAbortRef.current?.abort()
     streamAbortRef.current = null
     dispatch(clearChatError())
     dispatch(clearCurrentChat())
     setIsSidebarOpen(false)
-    resetSpokenReply()
     stopListening()
-    stopSpeaking()
+    clearSelectedFiles()
+    flushPendingFileCleanup()
   }
 
   async function handleDeleteChat(event, chatId) {
@@ -312,13 +415,13 @@ export function useDashboardPage() {
     if (currentChatId === chatId || pendingHydrationChatId === chatId || streamState?.chat?.id === chatId) {
       streamAbortRef.current?.abort()
       streamAbortRef.current = null
-      pendingVoiceReplyRef.current = false
       setPendingHydrationChatId(null)
       setStreamState(null)
       setStreamError('')
       dispatch(clearCurrentChat())
       stopListening()
-      stopSpeaking()
+      clearSelectedFiles()
+      flushPendingFileCleanup()
     }
 
     setDeletingChatId(chatId)
@@ -335,13 +438,12 @@ export function useDashboardPage() {
 
     const prompt = draft.trim()
 
-    if (!prompt || isStreaming) {
+    if (!canSubmit || isStreaming) {
       return
     }
 
     if (composerMode === COMPOSER_MODE.IMAGE) {
       stopListening()
-      pendingVoiceReplyRef.current = false
       streamAbortRef.current?.abort()
       streamAbortRef.current = null
       setPendingHydrationChatId(null)
@@ -355,6 +457,8 @@ export function useDashboardPage() {
           kind: 'text',
           content: prompt,
           pending: true,
+          attachments: [],
+          images: [],
         },
         aiText: '',
         aiImages: [],
@@ -382,6 +486,8 @@ export function useDashboardPage() {
               role: 'user',
               kind: 'text',
               content: prompt,
+              attachments: [],
+              images: [],
             },
           aiText: payload.aiMessage?.content || '',
           aiImages: payload.aiMessage?.images || [],
@@ -404,13 +510,16 @@ export function useDashboardPage() {
       return
     }
 
+    const fileEntries = [...selectedFiles]
+    const files = fileEntries.map((fileEntry) => fileEntry.file)
+    const userContent = buildPendingUserText(prompt, fileEntries)
+    const pendingAttachments = buildPendingAttachments(fileEntries)
+    const pendingImages = buildPendingImages(fileEntries)
     const abortController = new AbortController()
+
     stopListening()
-    stopSpeaking()
-    resetSpokenReply()
     streamAbortRef.current?.abort()
     streamAbortRef.current = abortController
-    pendingVoiceReplyRef.current = true
 
     let streamMeta = null
     let streamDone = null
@@ -418,12 +527,14 @@ export function useDashboardPage() {
     setStreamError('')
     setStreamState({
       chat: activeChat,
-      title: activeChat?.title || prompt,
+      title: activeChat?.title || userContent,
       userMessage: {
         id: 'pending-user',
         role: 'user',
-        content: prompt,
+        content: userContent,
         pending: true,
+        attachments: pendingAttachments,
+        images: pendingImages,
       },
       aiText: '',
       aiBuffer: '',
@@ -431,11 +542,13 @@ export function useDashboardPage() {
       isStreaming: true,
     })
     setDraft('')
+    setSelectedFiles([])
     dispatch(clearChatError())
 
     try {
       await streamMessage({
         chatId: currentChatId,
+        files,
         message: prompt,
         model: selectedChatModel || undefined,
         signal: abortController.signal,
@@ -446,7 +559,7 @@ export function useDashboardPage() {
             setStreamState((currentState) => ({
               ...(currentState || {}),
               chat: data.chat || currentState?.chat || null,
-              title: data.chat?.title || data.title || currentState?.title || prompt,
+              title: data.chat?.title || data.title || currentState?.title || userContent,
               userMessage: data.userMessage || currentState?.userMessage || null,
               aiText: currentState?.aiText || '',
               aiBuffer: currentState?.aiBuffer || '',
@@ -479,7 +592,7 @@ export function useDashboardPage() {
                 return {
                   ...safeState,
                   chat: data.chat || safeState.chat || null,
-                  title: data.chat?.title || data.title || safeState.title || prompt,
+                  title: data.chat?.title || data.title || safeState.title || userContent,
                   userMessage: data.userMessage || safeState.userMessage || null,
                   aiText: finalText,
                   aiBuffer: '',
@@ -493,7 +606,7 @@ export function useDashboardPage() {
               return {
                 ...safeState,
                 chat: data.chat || safeState.chat || null,
-                title: data.chat?.title || data.title || safeState.title || prompt,
+                title: data.chat?.title || data.title || safeState.title || userContent,
                 userMessage: data.userMessage || safeState.userMessage || null,
                 aiBuffer: `${safeState.aiBuffer || ''}${tail}`,
                 doneReceived: true,
@@ -507,18 +620,21 @@ export function useDashboardPage() {
       const nextChatId = streamDone?.chat?.id || streamMeta?.chat?.id || currentChatId
 
       if (nextChatId) {
+        pendingFileCleanupRef.current = [...pendingFileCleanupRef.current, ...fileEntries]
         setPendingHydrationChatId(nextChatId)
+      } else {
+        revokeFileEntries(fileEntries)
       }
     } catch (streamFailure) {
       if (abortController.signal.aborted) {
-        pendingVoiceReplyRef.current = false
+        revokeFileEntries(fileEntries)
         setPendingHydrationChatId(null)
         setStreamState(null)
         return
       }
 
-      pendingVoiceReplyRef.current = false
       setDraft(prompt)
+      setSelectedFiles(fileEntries)
       setStreamError(streamFailure.message || 'Failed to stream message.')
       setPendingHydrationChatId(null)
       setStreamState(null)
@@ -530,11 +646,34 @@ export function useDashboardPage() {
   }
 
   async function handleLogoutClick() {
-    pendingVoiceReplyRef.current = false
+    setIsLoggingOut(true)
     stopListening()
-    stopSpeaking()
-    await handleLogout()
-    navigate('/login', { replace: true })
+    clearSelectedFiles()
+    flushPendingFileCleanup()
+
+    try {
+      await handleLogout()
+      navigate('/login', { replace: true })
+    } finally {
+      setIsLoggingOut(false)
+    }
+  }
+
+  async function handleProfileSave({ username: nextUsername, avatarFile }) {
+    setIsProfileSaving(true)
+
+    try {
+      const response = await handleUpdateProfile({
+        username: nextUsername,
+        avatarFile,
+      })
+
+      if (response?.user) {
+        setIsProfileOpen(false)
+      }
+    } finally {
+      setIsProfileSaving(false)
+    }
   }
 
   function handleVoiceInputToggle() {
@@ -550,7 +689,9 @@ export function useDashboardPage() {
   }
 
   return {
+    avatar: user?.avatar || '',
     avatarLabel,
+    canSubmit,
     chatModels,
     chats,
     composerMode,
@@ -559,32 +700,37 @@ export function useDashboardPage() {
     deletingChatId,
     draft,
     hasActiveThread,
-    isAuthLoading,
     isDeleting,
     isLoading,
+    isListeningToVoice: isListening,
+    isLoggingOut,
+    isProfileOpen,
+    isProfileSaving,
     isSidebarOpen,
     isStreaming,
     isThemeTransitioning,
+    isVoiceInputSupported,
+    isVoiceTranscribing: isTranscribing,
     nextTheme,
     selectedChatModel,
+    selectedFiles,
     statusError,
     theme,
     threadTitle,
     username,
     visibleMessages,
     voiceStatus,
-    isListeningToVoice: isListening,
-    isVoiceTranscribing: isTranscribing,
-    isVoiceInputSupported,
-    isVoicePlaybackSupported,
-    isVoiceReplyEnabled,
-    isVoiceSpeaking: isSpeaking,
-    handleComposerModeChange,
     handleChatModelChange,
+    handleComposerModeChange,
     handleDeleteChat,
     handleDraftChange: setDraft,
+    handleFilesSelected,
     handleLogoutClick,
     handleMenuToggle,
+    handleProfileClose,
+    handleProfileOpen,
+    handleProfileSave,
+    handleRemoveFile,
     handleSidebarClose,
     handleStartNewThread,
     handleSubmit,
@@ -592,6 +738,5 @@ export function useDashboardPage() {
     handleThemeToggle,
     handleThreadSelect,
     handleVoiceInputToggle,
-    handleVoiceReplyToggle: toggleVoiceReplies,
   }
 }

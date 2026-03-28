@@ -1,37 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { transcribeVoice } from '../../service/chat.api'
 
-function getSpeechSynthesisApi() {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    return null
-  }
-
-  return window.speechSynthesis
-}
-
 function buildDraftFromVoice(initialText, transcript) {
   const parts = [String(initialText || '').trim(), String(transcript || '').trim()].filter(Boolean)
   return parts.join(' ').trim()
-}
-
-function cleanSpeechText(text) {
-  return String(text || '')
-    .replace(/```[\s\S]*?```/g, ' code block ')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
-    .replace(/[#>*_~-]/g, ' ')
-    .replace(/\n+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function pickVoice(voices) {
-  if (!voices.length) {
-    return null
-  }
-
-  const englishVoice = voices.find((voice) => String(voice.lang || '').toLowerCase().startsWith('en'))
-  return englishVoice || voices[0]
 }
 
 function getMediaRecorderSupport() {
@@ -79,33 +51,17 @@ export function useVoiceAssistant() {
   const streamRef = useRef(null)
   const chunksRef = useRef([])
   const listeningSessionRef = useRef({ initialText: '', onTextChange: null })
-  const spokenReplyKeyRef = useRef('')
-  const availableVoicesRef = useRef([])
   const [isListening, setIsListening] = useState(false)
-  const [isSpeaking, setIsSpeaking] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [voiceError, setVoiceError] = useState('')
-  const [isVoiceReplyEnabled, setIsVoiceReplyEnabled] = useState(true)
   const isVoiceInputSupported =
     typeof navigator !== 'undefined' &&
     Boolean(navigator.mediaDevices?.getUserMedia) &&
     getMediaRecorderSupport()
-  const isVoicePlaybackSupported =
-    typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window
 
   const stopRecordingStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
-  }, [])
-
-  const stopSpeaking = useCallback(() => {
-    const speechSynthesisApi = getSpeechSynthesisApi()
-
-    if (speechSynthesisApi) {
-      speechSynthesisApi.cancel()
-    }
-
-    setIsSpeaking(false)
   }, [])
 
   const stopListening = useCallback(() => {
@@ -204,107 +160,19 @@ export function useVoiceAssistant() {
     }
   }, [isVoiceInputSupported, stopRecordingStream])
 
-  const toggleVoiceReplies = useCallback(() => {
-    setIsVoiceReplyEnabled((currentValue) => {
-      const nextValue = !currentValue
-
-      if (!nextValue) {
-        stopSpeaking()
-      }
-
-      return nextValue
-    })
-  }, [stopSpeaking])
-
-  const resetSpokenReply = useCallback(() => {
-    spokenReplyKeyRef.current = ''
-  }, [])
-
-  const speakReply = useCallback(
-    ({ key, text }) => {
-      if (!isVoiceReplyEnabled || !isVoicePlaybackSupported) {
-        return false
-      }
-
-      const nextText = cleanSpeechText(text)
-
-      if (!key || !nextText || spokenReplyKeyRef.current === key) {
-        return false
-      }
-
-      const speechSynthesisApi = getSpeechSynthesisApi()
-
-      if (!speechSynthesisApi) {
-        return false
-      }
-
-      const utterance = new window.SpeechSynthesisUtterance(nextText)
-      utterance.voice = pickVoice(availableVoicesRef.current)
-      utterance.rate = 1
-      utterance.pitch = 1
-
-      utterance.onstart = () => {
-        setVoiceError('')
-        setIsSpeaking(true)
-      }
-
-      utterance.onend = () => {
-        setIsSpeaking(false)
-      }
-
-      utterance.onerror = () => {
-        setIsSpeaking(false)
-        setVoiceError('Voice reply could not be played on this device.')
-      }
-
-      spokenReplyKeyRef.current = key
-      speechSynthesisApi.cancel()
-      speechSynthesisApi.speak(utterance)
-      return true
-    },
-    [isVoicePlaybackSupported, isVoiceReplyEnabled],
-  )
-
-  useEffect(() => {
-    const speechSynthesisApi = getSpeechSynthesisApi()
-
-    if (!speechSynthesisApi) {
-      return undefined
-    }
-
-    const updateVoices = () => {
-      availableVoicesRef.current = speechSynthesisApi.getVoices()
-    }
-
-    updateVoices()
-    speechSynthesisApi.addEventListener?.('voiceschanged', updateVoices)
-
-    return () => {
-      speechSynthesisApi.removeEventListener?.('voiceschanged', updateVoices)
-    }
-  }, [])
-
   useEffect(() => {
     return () => {
       stopListening()
-      stopSpeaking()
       stopRecordingStream()
     }
-  }, [stopListening, stopSpeaking, stopRecordingStream])
+  }, [stopListening, stopRecordingStream])
 
   return {
     isListening,
-    isSpeaking,
     isTranscribing,
     isVoiceInputSupported,
-    isVoicePlaybackSupported,
-    isVoiceReplyEnabled,
-    resetSpokenReply,
-    speakReply,
     startListening,
     stopListening,
-    stopSpeaking,
-    toggleVoiceReplies,
     voiceError,
   }
 }

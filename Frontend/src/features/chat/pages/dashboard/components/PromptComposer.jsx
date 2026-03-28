@@ -1,34 +1,35 @@
 import React, { useEffect, useRef } from 'react'
 import { SparkleIcon } from '../../../../auth/components/AuthIcons'
 import { COMPOSER_MODE } from '../constants'
-import { ArrowRightIcon, ImageIcon, MicIcon, SearchIcon, VolumeIcon, VolumeOffIcon } from './DashboardIcons'
+import { ArrowRightIcon, FileIcon, ImageIcon, MicIcon, PaperclipIcon, SearchIcon } from './DashboardIcons'
 
 function PromptComposer({
+  canSubmit = false,
   chatModels = [],
   draft,
   isListening = false,
   isSending,
   isVoiceInputSupported = false,
-  isVoicePlaybackSupported = false,
-  isVoiceReplyEnabled = true,
-  isVoiceSpeaking = false,
   isVoiceTranscribing = false,
   mode,
   onChange,
+  onFilesSelected,
   onModeChange,
   onModelChange,
+  onRemoveFile,
   onSubmit,
   onVoiceInputToggle,
-  onVoiceReplyToggle,
   selectedModel = '',
+  selectedFiles = [],
   voiceStatus = '',
   docked = false,
 }) {
   const formRef = useRef(null)
+  const fileInputRef = useRef(null)
   const textareaRef = useRef(null)
   const maxTextareaHeight = 220
   const voiceStatusClassName = `dashboard-composer__voice-status${
-    voiceStatus && !isListening && !isVoiceSpeaking ? ' dashboard-composer__voice-status--error' : ''
+    voiceStatus && !isListening && !isVoiceTranscribing ? ' dashboard-composer__voice-status--error' : ''
   }`
 
   const updateDockedHeight = () => {
@@ -185,41 +186,65 @@ function PromptComposer({
           </button>
 
           {mode === COMPOSER_MODE.CHAT ? (
-            <button
-              aria-label={isVoiceReplyEnabled ? 'Turn voice replies off' : 'Turn voice replies on'}
-              aria-pressed={isVoiceReplyEnabled}
-              className={`dashboard-composer__icon-button${
-                isVoiceReplyEnabled ? ' dashboard-composer__icon-button--active' : ''
-              }`}
-              disabled={!isVoicePlaybackSupported}
-              onClick={onVoiceReplyToggle}
-              title={
-                isVoicePlaybackSupported
-                  ? isVoiceReplyEnabled
-                    ? 'Voice replies are on'
-                    : 'Voice replies are off'
-                  : 'Voice replies are not available in this browser'
-              }
-              type="button"
-            >
-              {isVoiceReplyEnabled ? (
-                <VolumeIcon className="dashboard-composer__icon" />
-              ) : (
-                <VolumeOffIcon className="dashboard-composer__icon" />
-              )}
-            </button>
+            <>
+              <button
+                aria-label="Attach files"
+                className="dashboard-composer__icon-button"
+                onClick={() => fileInputRef.current?.click()}
+                type="button"
+              >
+                <PaperclipIcon className="dashboard-composer__icon" />
+              </button>
+
+              <input
+                accept="image/*,application/pdf,.pdf"
+                className="sr-only"
+                multiple
+                onChange={(event) => {
+                  onFilesSelected?.(Array.from(event.target.files || []))
+                  event.target.value = ''
+                }}
+                ref={fileInputRef}
+                type="file"
+              />
+            </>
           ) : null}
 
           <button
             aria-label={mode === COMPOSER_MODE.IMAGE ? 'Generate image' : 'Send question'}
             className="dashboard-composer__send"
-            disabled={!draft.trim() || isSending}
+            disabled={!canSubmit || isSending}
             type="submit"
           >
             <ArrowRightIcon className="dashboard-composer__send-icon" />
           </button>
         </div>
       </div>
+
+      {mode === COMPOSER_MODE.CHAT && selectedFiles.length ? (
+        <div className="dashboard-composer__attachments">
+          {selectedFiles.map((selectedFile) => (
+            <div className="dashboard-attachment-chip" key={selectedFile.id}>
+              {selectedFile.previewUrl ? (
+                <img alt={selectedFile.name} className="dashboard-attachment-chip__thumb" src={selectedFile.previewUrl} />
+              ) : (
+                <span className="dashboard-attachment-chip__thumb dashboard-attachment-chip__thumb--file">
+                  <FileIcon className="dashboard-attachment-chip__thumb-icon" />
+                </span>
+              )}
+              <span className="dashboard-attachment-chip__label">{selectedFile.name}</span>
+              <button
+                aria-label={`Remove ${selectedFile.name}`}
+                className="dashboard-attachment-chip__remove"
+                onClick={() => onRemoveFile?.(selectedFile.id)}
+                type="button"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {voiceStatus ? (
         <p

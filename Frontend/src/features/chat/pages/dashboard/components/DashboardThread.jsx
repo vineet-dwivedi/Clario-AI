@@ -1,10 +1,13 @@
 import React from 'react'
+import ChatActionsBar from './ChatActionsBar'
 import ConversationList from './ConversationList'
 import DashboardTopbar from './DashboardTopbar'
 import PromptComposer from './PromptComposer'
 
 function DashboardThread({
+  avatar,
   avatarLabel,
+  canSubmit,
   chatModels,
   conversationEndRef,
   draft,
@@ -12,21 +15,21 @@ function DashboardThread({
   isSidebarOpen,
   isStreaming,
   isVoiceInputSupported,
-  isVoicePlaybackSupported,
-  isVoiceReplyEnabled,
-  isVoiceSpeaking,
   isVoiceTranscribing,
   messages,
   mode,
   onChange,
+  onFilesSelected,
   onMenuToggle,
   onModeChange,
   onModelChange,
+  onOpenProfile,
+  onRemoveFile,
   onStartNewThread,
   onSubmit,
   onVoiceInputToggle,
-  onVoiceReplyToggle,
   selectedModel,
+  selectedFiles,
   statusError,
   threadTitle,
   username,
@@ -38,10 +41,12 @@ function DashboardThread({
         <div className="dashboard-shell">
           <DashboardTopbar
             actionLabel="New chat"
+            avatar={avatar}
             avatarLabel={avatarLabel}
             isSidebarOpen={isSidebarOpen}
             onAction={onStartNewThread}
             onMenuToggle={onMenuToggle}
+            onProfileOpen={onOpenProfile}
             username={username}
           />
         </div>
@@ -58,28 +63,30 @@ function DashboardThread({
             </div>
 
             <ConversationList conversationEndRef={conversationEndRef} messages={messages} statusError={statusError} />
+
+            {messages.length ? <ChatActionsBar messages={messages} threadTitle={threadTitle} /> : null}
           </div>
         </div>
 
         <PromptComposer
+          canSubmit={canSubmit}
           chatModels={chatModels}
           docked
           draft={draft}
           isListening={isListeningToVoice}
           isSending={isStreaming}
           isVoiceInputSupported={isVoiceInputSupported}
-          isVoicePlaybackSupported={isVoicePlaybackSupported}
-          isVoiceReplyEnabled={isVoiceReplyEnabled}
-          isVoiceSpeaking={isVoiceSpeaking}
           isVoiceTranscribing={isVoiceTranscribing}
           mode={mode}
           onChange={onChange}
+          onFilesSelected={onFilesSelected}
           onModeChange={onModeChange}
           onModelChange={onModelChange}
+          onRemoveFile={onRemoveFile}
           onSubmit={onSubmit}
           onVoiceInputToggle={onVoiceInputToggle}
-          onVoiceReplyToggle={onVoiceReplyToggle}
           selectedModel={selectedModel}
+          selectedFiles={selectedFiles}
           voiceStatus={voiceStatus}
         />
       </main>

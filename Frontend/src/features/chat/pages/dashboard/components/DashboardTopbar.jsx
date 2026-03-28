@@ -2,7 +2,7 @@ import React from 'react'
 import { SparkleIcon } from '../../../../auth/components/AuthIcons'
 import { MenuIcon } from './DashboardIcons'
 
-function DashboardTopbar({ actionLabel, avatarLabel, isSidebarOpen, onAction, onMenuToggle, username }) {
+function DashboardTopbar({ actionLabel, avatar, avatarLabel, isSidebarOpen, onAction, onMenuToggle, onProfileOpen, username }) {
   return (
     <header className="dashboard-topbar">
       <div className="dashboard-topbar__left">
@@ -20,7 +20,7 @@ function DashboardTopbar({ actionLabel, avatarLabel, isSidebarOpen, onAction, on
           <span className="dashboard-brand__badge" aria-hidden="true">
             <SparkleIcon className="dashboard-brand__icon" />
           </span>
-          <span className="dashboard-brand__name">Lumina</span>
+          <span className="dashboard-brand__name">Clario AI</span>
         </div>
       </div>
 
@@ -29,8 +29,12 @@ function DashboardTopbar({ actionLabel, avatarLabel, isSidebarOpen, onAction, on
           {actionLabel}
         </button>
 
-        <button aria-label={`${username} profile`} className="dashboard-avatar" type="button">
-          <span className="dashboard-avatar__label">{avatarLabel}</span>
+        <button aria-label={`${username} profile`} className="dashboard-avatar" onClick={onProfileOpen} type="button">
+          {avatar ? (
+            <img alt={username} className="dashboard-avatar__image" src={avatar} />
+          ) : (
+            <span className="dashboard-avatar__label">{avatarLabel}</span>
+          )}
         </button>
       </div>
     </header>

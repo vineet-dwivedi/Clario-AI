@@ -20,6 +20,10 @@ const messageSchema = new mongoose.Schema(
             enum: [ 'text', 'image' ],
             default: 'text',
         },
+        context: {
+            type: String,
+            default: '',
+        },
         images: {
             type: [
                 {
@@ -30,6 +34,23 @@ const messageSchema = new mongoose.Schema(
                     mimeType: {
                         type: String,
                         required: true,
+                    },
+                },
+            ],
+            default: [],
+        },
+        attachments: {
+            type: [
+                {
+                    name: {
+                        type: String,
+                        required: true,
+                        trim: true,
+                    },
+                    mimeType: {
+                        type: String,
+                        required: true,
+                        trim: true,
                     },
                 },
             ],

@@ -1,6 +1,6 @@
 import { CodeIcon, ImageIcon, NoteIcon, OrbitIcon } from './components/DashboardIcons'
 
-export const STORAGE_KEY = 'perplexity-auth-theme'
+export const STORAGE_KEY = 'clario-ai-theme'
 
 export const COMPOSER_MODE = Object.freeze({
   CHAT: 'chat',

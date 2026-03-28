@@ -1,5 +1,6 @@
 import React from 'react'
 import ChatMarkdown from '../../../components/ChatMarkdown'
+import MessageAttachments from './MessageAttachments'
 import MessageImages from './MessageImages'
 
 function ConversationList({ conversationEndRef, messages, statusError }) {
@@ -14,12 +15,15 @@ function ConversationList({ conversationEndRef, messages, statusError }) {
             key={message.id}
           >
             <div className="dashboard-message__meta">
-              <span className="dashboard-message__role">{message.role === 'user' ? 'You' : 'Lumina'}</span>
+              <span className="dashboard-message__role">{message.role === 'user' ? 'You' : 'Clario AI'}</span>
             </div>
 
             {message.role === 'ai' ? (
               <div className="dashboard-message__content dashboard-message__content--ai">
                 {message.content ? <ChatMarkdown content={message.content} /> : null}
+                {Array.isArray(message.attachments) && message.attachments.length ? (
+                  <MessageAttachments attachments={message.attachments} />
+                ) : null}
                 {Array.isArray(message.images) && message.images.length ? (
                   <MessageImages images={message.images} pending={message.pending} />
                 ) : null}
@@ -29,6 +33,9 @@ function ConversationList({ conversationEndRef, messages, statusError }) {
             ) : (
               <div className="dashboard-message__content dashboard-message__content--user">
                 <p>{message.content}</p>
+                {Array.isArray(message.attachments) && message.attachments.length ? (
+                  <MessageAttachments attachments={message.attachments} />
+                ) : null}
                 {Array.isArray(message.images) && message.images.length ? (
                   <MessageImages images={message.images} pending={message.pending} />
                 ) : null}

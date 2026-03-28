@@ -1,10 +1,23 @@
-import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { ChatOpenAI } from "@langchain/openai";
 
 const TEMPERATURE = getNumber(process.env.CHAT_TEMPERATURE, 0.7);
 const TOP_P = getNumber(process.env.CHAT_TOP_P, 0.9);
-const MAX_TOKENS = getNumber(process.env.CHAT_MAX_TOKENS, 1024);
+const MAX_TOKENS = Math.max(getNumber(process.env.CHAT_MAX_TOKENS, 2048), 2048);
+const SYSTEM_PROMPT = `
+You are Clario AI, a thoughtful and practical assistant.
+
+How to answer:
+- Give a direct answer first.
+- Then explain clearly with useful detail.
+- Break complex topics into simple steps.
+- Use headings or bullet points when they improve readability.
+- Use examples when they help the user understand faster.
+- If the user uploads a PDF or image, use that material as your main reference.
+- If the uploaded material does not contain the answer, say that honestly.
+- Avoid being vague or overly short unless the user asks for a short answer.
+`.trim();
 
 const CHAT_MODELS = [
     {
@@ -13,7 +26,8 @@ const CHAT_MODELS = [
         provider: "google",
         model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
         apiKeyEnvVar: "GEMINI_API_KEY",
-        isDefault: true
+        isDefault: true,
+        supportsImages: true
     },
     {
         alias: "cloudflare",
@@ -21,7 +35,8 @@ const CHAT_MODELS = [
         provider: "cloudflare",
         model: process.env.CLOUDFLARE_MODEL || "@cf/qwen/qwen3-30b-a3b-fp8",
         apiKeyEnvVar: "CLOUDFLARE_API_TOKEN",
-        isDefault: false
+        isDefault: false,
+        supportsImages: false
     }
 ];
 
@@ -70,6 +85,31 @@ function requireModelConfig(requestedModel) {
     }
 
     return modelConfig;
+}
+
+function resolveModelSelection(requestedModel, options = {}) {
+    const requestedConfig = requireModelConfig(requestedModel);
+    const hasImages = Array.isArray(options.images) && options.images.length > 0;
+
+    if (!hasImages || requestedConfig.supportsImages) {
+        return {
+            modelConfig: requestedConfig,
+            fallbackUsed: false,
+            fallbackFrom: null
+        };
+    }
+
+    const imageModel = CHAT_MODELS.find((model) => model.supportsImages);
+
+    if (!imageModel) {
+        throw new AiServiceError("No image-capable model is available for uploaded images.", 500);
+    }
+
+    return {
+        modelConfig: imageModel,
+        fallbackUsed: true,
+        fallbackFrom: requestedConfig.alias
+    };
 }
 
 function createGoogleModel(modelConfig) {
@@ -149,11 +189,61 @@ function cleanText(content) {
         .trim();
 }
 
-function buildMessages(message, history = []) {
-    const messages = [];
+function buildReferenceText(message, options = {}) {
+    const sections = [ message ];
+
+    if (options.documentContext?.trim()) {
+        sections.push(
+            [
+                "Reference text from uploaded PDF files:",
+                options.documentContext.trim(),
+                "Use the PDF content above when answering the user."
+            ].join("\n")
+        );
+    }
+
+    return sections.join("\n\n");
+}
+
+function buildUserContent(message, options = {}) {
+    const text = buildReferenceText(message, options);
+
+    if (!Array.isArray(options.images) || options.images.length === 0) {
+        return text;
+    }
+
+    return [
+        { type: "text", text },
+        ...options.images.map((image) => ({
+            type: "image_url",
+            image_url: image.dataUrl
+        }))
+    ];
+}
+
+function buildHistoryText(item) {
+    const sections = [ String(item?.content || "").trim() ];
+
+    if (item?.context?.trim()) {
+        sections.push(`Reference text from a previous uploaded PDF:\n${item.context.trim()}`);
+    }
+
+    if (Array.isArray(item?.attachments) && item.attachments.length) {
+        sections.push(`Attached files: ${item.attachments.map((file) => file.name).join(", ")}`);
+    }
+
+    if (Array.isArray(item?.images) && item.images.length) {
+        sections.push(`The user also uploaded ${item.images.length} image(s) in this turn.`);
+    }
+
+    return sections.filter(Boolean).join("\n\n").trim();
+}
+
+function buildMessages(message, history = [], options = {}) {
+    const messages = [ new SystemMessage(SYSTEM_PROMPT) ];
 
     for (const item of history) {
-        const text = String(item?.content || "").trim();
+        const text = buildHistoryText(item);
 
         if (!text) {
             continue;
@@ -166,11 +256,11 @@ function buildMessages(message, history = []) {
         );
     }
 
-    messages.push(new HumanMessage(message));
+    messages.push(new HumanMessage(buildUserContent(message, options)));
     return messages;
 }
 
-function splitText(text, size = 24) {
+function splitText(text, size = 32) {
     const chunks = [];
 
     for (let index = 0; index < text.length; index += size) {
@@ -180,14 +270,14 @@ function splitText(text, size = 24) {
     return chunks;
 }
 
-function createReply(modelConfig, text, title) {
+function createReply(result, text, title) {
     return {
-        provider: modelConfig.provider,
-        model: modelConfig.model,
+        provider: result.modelConfig.provider,
+        model: result.modelConfig.model,
         title,
         text,
-        fallbackUsed: false,
-        fallbackFrom: null
+        fallbackUsed: result.fallbackUsed,
+        fallbackFrom: result.fallbackFrom
     };
 }
 
@@ -197,15 +287,15 @@ function throwIfAborted(signal) {
     }
 }
 
-async function getResponseText({ message, history = [], model, signal }) {
-    const modelConfig = requireModelConfig(model);
-    const response = await getChatModel(modelConfig).invoke(
-        buildMessages(message, history),
+async function getResponseText({ message, history = [], model, signal, attachments = {} }) {
+    const resolvedModel = resolveModelSelection(model, attachments);
+    const response = await getChatModel(resolvedModel.modelConfig).invoke(
+        buildMessages(message, history, attachments),
         { signal }
     );
 
     return {
-        modelConfig,
+        ...resolvedModel,
         text: cleanText(response.content)
     };
 }
@@ -261,25 +351,27 @@ export async function generateChatReply({
     message,
     history = [],
     generateTitle = true,
-    model
+    model,
+    attachments = {}
 }) {
     const userMessage = requireMessage(message);
-    const modelConfig = requireModelConfig(model);
+    const resolvedSelection = resolveModelSelection(model, attachments);
 
     try {
         const result = await getResponseText({
             message: userMessage,
             history,
-            model: modelConfig.alias
+            model: resolvedSelection.modelConfig.alias,
+            attachments
         });
 
         if (!result.text) {
             throw new AiServiceError("AI returned an empty response.", 502);
         }
 
-        return createReply(result.modelConfig, result.text, generateTitle ? getTitle(userMessage) : null);
+        return createReply(result, result.text, generateTitle ? getTitle(userMessage) : null);
     } catch (error) {
-        throw formatError(error, modelConfig);
+        throw formatError(error, resolvedSelection.modelConfig);
     }
 }
 
@@ -288,20 +380,21 @@ export async function* streamChatReply({
     history = [],
     generateTitle = true,
     model,
-    signal
+    signal,
+    attachments = {}
 }) {
     const userMessage = requireMessage(message);
-    const modelConfig = requireModelConfig(model);
+    const resolvedSelection = resolveModelSelection(model, attachments);
     const title = generateTitle ? getTitle(userMessage) : null;
 
     yield {
         type: "meta",
         data: {
-            provider: modelConfig.provider,
-            model: modelConfig.model,
+            provider: resolvedSelection.modelConfig.provider,
+            model: resolvedSelection.modelConfig.model,
             title,
-            fallbackUsed: false,
-            fallbackFrom: null
+            fallbackUsed: resolvedSelection.fallbackUsed,
+            fallbackFrom: resolvedSelection.fallbackFrom
         }
     };
 
@@ -311,8 +404,9 @@ export async function* streamChatReply({
         const result = await getResponseText({
             message: userMessage,
             history,
-            model: modelConfig.alias,
-            signal
+            model: resolvedSelection.modelConfig.alias,
+            signal,
+            attachments
         });
 
         if (!result.text) {
@@ -331,11 +425,11 @@ export async function* streamChatReply({
                 model: result.modelConfig.model,
                 title,
                 text: result.text,
-                fallbackUsed: false,
-                fallbackFrom: null
+                fallbackUsed: result.fallbackUsed,
+                fallbackFrom: result.fallbackFrom
             }
         };
     } catch (error) {
-        throw formatError(error, modelConfig);
+        throw formatError(error, resolvedSelection.modelConfig);
     }
 }

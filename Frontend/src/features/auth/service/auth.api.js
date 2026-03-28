@@ -44,3 +44,19 @@ export async function logout() {
 
   return response.data
 }
+
+/**
+ * Updates the current user's profile details.
+ * @param {{ username: string, avatarFile?: File | null }} payload
+ */
+export async function updateProfile({ username, avatarFile }) {
+  const formData = new FormData()
+  formData.append('username', username)
+
+  if (avatarFile) {
+    formData.append('avatar', avatarFile)
+  }
+
+  const response = await api.put('/api/auth/profile', formData)
+  return response.data
+}

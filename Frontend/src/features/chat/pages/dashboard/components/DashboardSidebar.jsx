@@ -3,18 +3,20 @@ import { SparkleIcon } from '../../../../auth/components/AuthIcons'
 import { ChatIcon, CloseIcon, LogoutIcon, PlusIcon, TrashIcon } from './DashboardIcons'
 
 function DashboardSidebar({
+  avatar,
   avatarLabel,
   chats,
   currentChatId,
   deletingChatId,
-  isAuthLoading,
   isDeleting,
+  isLoggingOut,
   isLoading,
   isSidebarOpen,
   onClose,
   onDeleteChat,
   onLogout,
   onNewThread,
+  onOpenProfile,
   onSelectChat,
   username,
 }) {
@@ -25,7 +27,7 @@ function DashboardSidebar({
           <span className="dashboard-brand__badge" aria-hidden="true">
             <SparkleIcon className="dashboard-brand__icon" />
           </span>
-          <span className="dashboard-brand__name">Lumina</span>
+          <span className="dashboard-brand__name">Clario AI</span>
         </div>
 
         <button
@@ -77,14 +79,16 @@ function DashboardSidebar({
       </div>
 
       <div className="dashboard-sidebar__footer">
-        <button className="dashboard-sidebar__profile" type="button">
-          <span className="dashboard-sidebar__profile-avatar">{avatarLabel}</span>
+        <button className="dashboard-sidebar__profile" onClick={onOpenProfile} type="button">
+          <span className="dashboard-sidebar__profile-avatar">
+            {avatar ? <img alt={username} className="dashboard-sidebar__profile-image" src={avatar} /> : avatarLabel}
+          </span>
           <span className="dashboard-sidebar__profile-name">{username}</span>
         </button>
 
-        <button className="dashboard-sidebar__logout" disabled={isAuthLoading} onClick={onLogout} type="button">
+        <button className="dashboard-sidebar__logout" disabled={isLoggingOut} onClick={onLogout} type="button">
           <LogoutIcon className="dashboard-sidebar__logout-icon" />
-          <span>{isAuthLoading ? 'Logging out...' : 'Logout'}</span>
+          <span>{isLoggingOut ? 'Logging out...' : 'Logout'}</span>
         </button>
       </div>
     </aside>

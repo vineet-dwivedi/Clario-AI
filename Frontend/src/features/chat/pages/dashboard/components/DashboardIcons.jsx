@@ -39,6 +39,14 @@ export function MicIcon({ className }) {
   )
 }
 
+export function PaperclipIcon({ className }) {
+  return (
+    <svg aria-hidden="true" className={className} {...iconProps}>
+      <path d="M8.75 12.5L14.8 6.45C16.07 5.18 18.12 5.18 19.39 6.45C20.66 7.72 20.66 9.77 19.39 11.04L11.58 18.85C9.75 20.68 6.78 20.68 4.95 18.85C3.12 17.02 3.12 14.05 4.95 12.22L12.4 4.77" />
+    </svg>
+  )
+}
+
 export function ArrowRightIcon({ className }) {
   return (
     <svg aria-hidden="true" className={className} {...iconProps}>
@@ -78,22 +86,42 @@ export function ImageIcon({ className }) {
   )
 }
 
-export function VolumeIcon({ className }) {
+export function FileIcon({ className }) {
   return (
     <svg aria-hidden="true" className={className} {...iconProps}>
-      <path d="M5.5 14.5V9.5C5.5 8.95 5.95 8.5 6.5 8.5H9.1L12.9 5.5V18.5L9.1 15.5H6.5C5.95 15.5 5.5 15.05 5.5 14.5Z" />
-      <path d="M16 9.25C17 10.05 17.6 11 17.6 12C17.6 13 17 13.95 16 14.75" />
-      <path d="M17.7 6.9C19.4 8.3 20.4 10.05 20.4 12C20.4 13.95 19.4 15.7 17.7 17.1" />
+      <path d="M8 4.5H14.5L18 8V18C18 19.1 17.1 20 16 20H8C6.9 20 6 19.1 6 18V6.5C6 5.4 6.9 4.5 8 4.5Z" />
+      <path d="M14 4.5V8.5H18" />
+      <path d="M9 12H15" />
+      <path d="M9 15H13" />
     </svg>
   )
 }
 
-export function VolumeOffIcon({ className }) {
+export function CopyIcon({ className }) {
   return (
     <svg aria-hidden="true" className={className} {...iconProps}>
-      <path d="M5.5 14.5V9.5C5.5 8.95 5.95 8.5 6.5 8.5H9.1L12.9 5.5V18.5L9.1 15.5H6.5C5.95 15.5 5.5 15.05 5.5 14.5Z" />
-      <path d="M16 10L20 14" />
-      <path d="M20 10L16 14" />
+      <rect x="9" y="9" width="10" height="10" rx="2" />
+      <path d="M6.5 14.5H6C4.9 14.5 4 13.6 4 12.5V6C4 4.9 4.9 4 6 4H12.5C13.6 4 14.5 4.9 14.5 6V6.5" />
+    </svg>
+  )
+}
+
+export function SaveIcon({ className }) {
+  return (
+    <svg aria-hidden="true" className={className} {...iconProps}>
+      <path d="M5.5 6.5C5.5 5.4 6.4 4.5 7.5 4.5H16L18.5 7V17.5C18.5 18.6 17.6 19.5 16.5 19.5H7.5C6.4 19.5 5.5 18.6 5.5 17.5V6.5Z" />
+      <path d="M8.5 4.5V9H15.5V4.5" />
+      <path d="M9 15.25H15" />
+    </svg>
+  )
+}
+
+export function DownloadIcon({ className }) {
+  return (
+    <svg aria-hidden="true" className={className} {...iconProps}>
+      <path d="M12 4.5V15.5" />
+      <path d="M8 11.5L12 15.5L16 11.5" />
+      <path d="M5 19.5H19" />
     </svg>
   )
 }
