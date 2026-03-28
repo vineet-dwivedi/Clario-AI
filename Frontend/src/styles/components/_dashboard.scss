@@ -507,6 +507,18 @@
     color: var(--text-primary);
     transform: translateY(-1px);
   }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+    transform: none;
+  }
+}
+
+.dashboard-composer__icon-button--active {
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--accent-strong);
+  box-shadow: 0 12px 24px rgba(var(--accent-rgb), 0.14);
 }
 
 .dashboard-composer__send {
@@ -531,6 +543,17 @@
 .dashboard-composer__send-icon {
   width: 1.15rem;
   height: 1.15rem;
+}
+
+.dashboard-composer__voice-status {
+  margin: $space-2 0 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.dashboard-composer__voice-status--error {
+  color: var(--state-error-text);
 }
 
 .dashboard-suggestions {

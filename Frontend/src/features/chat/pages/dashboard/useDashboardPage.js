@@ -13,6 +13,7 @@ import {
 import { generateImage, getModels, streamMessage } from '../../service/chat.api'
 import { COMPOSER_MODE } from './constants'
 import { buildVisibleMessages, getInitialTheme } from './helpers'
+import { useVoiceAssistant } from './useVoiceAssistant'
 
 export function useDashboardPage() {
   const dispatch = useDispatch()
@@ -34,6 +35,22 @@ export function useDashboardPage() {
   const transitionTimeoutRef = useRef(null)
   const conversationEndRef = useRef(null)
   const streamAbortRef = useRef(null)
+  const pendingVoiceReplyRef = useRef(false)
+  const {
+    isListening,
+    isSpeaking,
+    isTranscribing,
+    isVoiceInputSupported,
+    isVoicePlaybackSupported,
+    isVoiceReplyEnabled,
+    resetSpokenReply,
+    speakReply,
+    startListening,
+    stopListening,
+    stopSpeaking,
+    toggleVoiceReplies,
+    voiceError,
+  } = useVoiceAssistant()
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -107,10 +124,36 @@ export function useDashboardPage() {
   const statusError = streamError || error
   const threadTitle = activeChat?.title || streamState?.title || 'New Chat'
   const visibleMessages = buildVisibleMessages(activeMessages, streamState, isStreaming)
+  const voiceStatus = voiceError
+    ? voiceError
+    : isListening
+      ? 'Recording... tap the mic again when you are done.'
+      : isTranscribing
+        ? 'Turning your voice into text...'
+      : isSpeaking && isVoiceReplyEnabled
+        ? 'Reading the latest reply aloud.'
+        : ''
 
   useEffect(() => {
     conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [activeMessages, currentChatId, streamState?.aiText, streamState?.aiImages?.length, streamState?.userMessage?.content])
+
+  useEffect(() => {
+    const latestAiMessage = [...visibleMessages]
+      .reverse()
+      .find((message) => message.role === 'ai' && !message.pending && String(message.content || '').trim())
+
+    if (!pendingVoiceReplyRef.current || !latestAiMessage) {
+      return
+    }
+
+    const replyKey = `${currentChatId || streamState?.chat?.id || 'draft'}:${latestAiMessage.id}:${latestAiMessage.content.length}`
+    speakReply({
+      key: replyKey,
+      text: latestAiMessage.content,
+    })
+    pendingVoiceReplyRef.current = false
+  }, [currentChatId, speakReply, streamState?.chat?.id, visibleMessages])
 
   useEffect(() => {
     if (!streamState?.aiBuffer) {
@@ -221,12 +264,15 @@ export function useDashboardPage() {
   async function handleThreadSelect(chatId) {
     streamAbortRef.current?.abort()
     streamAbortRef.current = null
+    pendingVoiceReplyRef.current = false
     setPendingHydrationChatId(null)
     dispatch(setCurrentChatId(chatId))
     dispatch(clearChatError())
     setStreamError('')
     setStreamState(null)
     setIsSidebarOpen(false)
+    stopListening()
+    stopSpeaking()
 
     if (!messagesByChatId[chatId]) {
       await dispatch(fetchChatMessages(chatId))
@@ -238,11 +284,15 @@ export function useDashboardPage() {
     setStreamError('')
     setStreamState(null)
     setPendingHydrationChatId(null)
+    pendingVoiceReplyRef.current = false
     streamAbortRef.current?.abort()
     streamAbortRef.current = null
     dispatch(clearChatError())
     dispatch(clearCurrentChat())
     setIsSidebarOpen(false)
+    resetSpokenReply()
+    stopListening()
+    stopSpeaking()
   }
 
   async function handleDeleteChat(event, chatId) {
@@ -262,10 +312,13 @@ export function useDashboardPage() {
     if (currentChatId === chatId || pendingHydrationChatId === chatId || streamState?.chat?.id === chatId) {
       streamAbortRef.current?.abort()
       streamAbortRef.current = null
+      pendingVoiceReplyRef.current = false
       setPendingHydrationChatId(null)
       setStreamState(null)
       setStreamError('')
       dispatch(clearCurrentChat())
+      stopListening()
+      stopSpeaking()
     }
 
     setDeletingChatId(chatId)
@@ -287,6 +340,8 @@ export function useDashboardPage() {
     }
 
     if (composerMode === COMPOSER_MODE.IMAGE) {
+      stopListening()
+      pendingVoiceReplyRef.current = false
       streamAbortRef.current?.abort()
       streamAbortRef.current = null
       setPendingHydrationChatId(null)
@@ -350,8 +405,12 @@ export function useDashboardPage() {
     }
 
     const abortController = new AbortController()
+    stopListening()
+    stopSpeaking()
+    resetSpokenReply()
     streamAbortRef.current?.abort()
     streamAbortRef.current = abortController
+    pendingVoiceReplyRef.current = true
 
     let streamMeta = null
     let streamDone = null
@@ -452,11 +511,13 @@ export function useDashboardPage() {
       }
     } catch (streamFailure) {
       if (abortController.signal.aborted) {
+        pendingVoiceReplyRef.current = false
         setPendingHydrationChatId(null)
         setStreamState(null)
         return
       }
 
+      pendingVoiceReplyRef.current = false
       setDraft(prompt)
       setStreamError(streamFailure.message || 'Failed to stream message.')
       setPendingHydrationChatId(null)
@@ -469,8 +530,23 @@ export function useDashboardPage() {
   }
 
   async function handleLogoutClick() {
+    pendingVoiceReplyRef.current = false
+    stopListening()
+    stopSpeaking()
     await handleLogout()
     navigate('/login', { replace: true })
+  }
+
+  function handleVoiceInputToggle() {
+    if (isListening) {
+      stopListening()
+      return
+    }
+
+    startListening({
+      initialText: draft,
+      onTextChange: setDraft,
+    })
   }
 
   return {
@@ -496,6 +572,13 @@ export function useDashboardPage() {
     threadTitle,
     username,
     visibleMessages,
+    voiceStatus,
+    isListeningToVoice: isListening,
+    isVoiceTranscribing: isTranscribing,
+    isVoiceInputSupported,
+    isVoicePlaybackSupported,
+    isVoiceReplyEnabled,
+    isVoiceSpeaking: isSpeaking,
     handleComposerModeChange,
     handleChatModelChange,
     handleDeleteChat,
@@ -508,5 +591,7 @@ export function useDashboardPage() {
     handleSuggestionClick,
     handleThemeToggle,
     handleThreadSelect,
+    handleVoiceInputToggle,
+    handleVoiceReplyToggle: toggleVoiceReplies,
   }
 }

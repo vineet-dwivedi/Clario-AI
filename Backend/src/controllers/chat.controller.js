@@ -8,6 +8,7 @@ import {
     streamChatReply
 } from "../services/ai.service.js";
 import { generateImage, getImageModel } from "../services/image.service.js";
+import { getVoiceModel, transcribeAudio } from "../services/voice.service.js";
 
 const DEFAULT_CHAT_TITLE = "New Chat";
 
@@ -220,6 +221,11 @@ export async function getModels(req, res) {
                     ...getImageModel(),
                     capability: "image",
                     isDefault: true
+                },
+                {
+                    ...getVoiceModel(),
+                    capability: "voice",
+                    isDefault: true
                 }
             ]
         });
@@ -300,6 +306,29 @@ export async function sendImageMessage(req, res) {
     } catch (error) {
         console.error("Image generation error:", error);
         return sendError(res, error, "Failed to generate image.");
+    }
+}
+
+export async function transcribeVoiceMessage(req, res) {
+    try {
+        getUserId(req);
+
+        const audioBuffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || "");
+        const mimeType = req.get("content-type") || "application/octet-stream";
+        const result = await transcribeAudio({ audioBuffer, mimeType });
+
+        return res.status(200).json({
+            success: true,
+            message: "Voice transcribed successfully",
+            data: {
+                text: result.text,
+                provider: result.provider,
+                model: result.model
+            }
+        });
+    } catch (error) {
+        console.error("Voice transcription error:", error);
+        return sendError(res, error, "Failed to transcribe voice.");
     }
 }
 

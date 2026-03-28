@@ -47,8 +47,14 @@ function DashboardPage() {
           chatModels={page.chatModels}
           conversationEndRef={page.conversationEndRef}
           draft={page.draft}
+          isListeningToVoice={page.isListeningToVoice}
           isSidebarOpen={page.isSidebarOpen}
           isStreaming={page.isStreaming}
+          isVoiceInputSupported={page.isVoiceInputSupported}
+          isVoicePlaybackSupported={page.isVoicePlaybackSupported}
+          isVoiceReplyEnabled={page.isVoiceReplyEnabled}
+          isVoiceSpeaking={page.isVoiceSpeaking}
+          isVoiceTranscribing={page.isVoiceTranscribing}
           messages={page.visibleMessages}
           mode={page.composerMode}
           onChange={page.handleDraftChange}
@@ -57,18 +63,27 @@ function DashboardPage() {
           onModelChange={page.handleChatModelChange}
           onStartNewThread={page.handleStartNewThread}
           onSubmit={page.handleSubmit}
+          onVoiceInputToggle={page.handleVoiceInputToggle}
+          onVoiceReplyToggle={page.handleVoiceReplyToggle}
           selectedModel={page.selectedChatModel}
           statusError={page.statusError}
           threadTitle={page.threadTitle}
           username={page.username}
+          voiceStatus={page.voiceStatus}
         />
       ) : (
         <DashboardWelcome
           avatarLabel={page.avatarLabel}
           chatModels={page.chatModels}
           draft={page.draft}
+          isListeningToVoice={page.isListeningToVoice}
           isSidebarOpen={page.isSidebarOpen}
           isStreaming={page.isStreaming}
+          isVoiceInputSupported={page.isVoiceInputSupported}
+          isVoicePlaybackSupported={page.isVoicePlaybackSupported}
+          isVoiceReplyEnabled={page.isVoiceReplyEnabled}
+          isVoiceSpeaking={page.isVoiceSpeaking}
+          isVoiceTranscribing={page.isVoiceTranscribing}
           mode={page.composerMode}
           onChange={page.handleDraftChange}
           onMenuToggle={page.handleMenuToggle}
@@ -76,9 +91,12 @@ function DashboardPage() {
           onModelChange={page.handleChatModelChange}
           onSubmit={page.handleSubmit}
           onSuggestionClick={page.handleSuggestionClick}
+          onVoiceInputToggle={page.handleVoiceInputToggle}
+          onVoiceReplyToggle={page.handleVoiceReplyToggle}
           selectedModel={page.selectedChatModel}
           statusError={page.statusError}
           username={page.username}
+          voiceStatus={page.voiceStatus}
         />
       )}
 

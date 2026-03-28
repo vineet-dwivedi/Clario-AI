@@ -123,3 +123,25 @@ export async function streamMessage({ chatId, message, model, onEvent, signal })
     }
   }
 }
+
+export async function transcribeVoice(audioBlob) {
+  const response = await fetch(`${API_BASE_URL}/api/chats/voice/transcribe`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': audioBlob.type || 'application/octet-stream',
+    },
+    body: audioBlob,
+  })
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('Session expired. Please log in again.')
+    }
+
+    throw new Error(await getJsonErrorMessage(response))
+  }
+
+  const data = await response.json()
+  return data
+}

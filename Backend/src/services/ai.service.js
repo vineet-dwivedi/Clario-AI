@@ -16,19 +16,11 @@ const CHAT_MODELS = [
         isDefault: true
     },
     {
-        alias: "llama",
-        label: "Llama Local",
-        provider: "ollama",
-        model: process.env.OLLAMA_MODEL || "llama3.2:3b",
-        apiKeyEnvVar: null,
-        isDefault: false
-    },
-    {
-        alias: "qwen",
-        label: "Qwen Coder",
-        provider: "ollama",
-        model: process.env.QWEN_OLLAMA_MODEL || "qwen2.5-coder:7b",
-        apiKeyEnvVar: null,
+        alias: "cloudflare",
+        label: "Cloudflare Qwen",
+        provider: "cloudflare",
+        model: process.env.CLOUDFLARE_MODEL || "@cf/qwen/qwen3-30b-a3b-fp8",
+        apiKeyEnvVar: "CLOUDFLARE_API_TOKEN",
         isDefault: false
     }
 ];
@@ -46,9 +38,14 @@ function getNumber(value, fallback) {
     return Number.isFinite(number) ? number : fallback;
 }
 
-function getOllamaBaseUrl() {
-    const baseUrl = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434";
-    return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
+function getCloudflareBaseUrl() {
+    const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
+
+    if (!accountId) {
+        throw new AiServiceError("CLOUDFLARE_ACCOUNT_ID is missing.", 500);
+    }
+
+    return `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`;
 }
 
 function getDefaultModelConfig() {
@@ -89,16 +86,20 @@ function createGoogleModel(modelConfig) {
     });
 }
 
-function createOllamaModel(modelConfig) {
+function createCloudflareModel(modelConfig) {
+    if (!process.env.CLOUDFLARE_API_TOKEN) {
+        throw new AiServiceError("CLOUDFLARE_API_TOKEN is missing.", 500);
+    }
+
     return new ChatOpenAI({
-        apiKey: "ollama",
+        apiKey: process.env.CLOUDFLARE_API_TOKEN,
         model: modelConfig.model,
         temperature: TEMPERATURE,
         topP: TOP_P,
         maxTokens: MAX_TOKENS,
         useResponsesApi: false,
         configuration: {
-            baseURL: getOllamaBaseUrl()
+            baseURL: getCloudflareBaseUrl()
         }
     });
 }
@@ -108,8 +109,8 @@ function getChatModel(modelConfig) {
         return createGoogleModel(modelConfig);
     }
 
-    if (modelConfig.provider === "ollama") {
-        return createOllamaModel(modelConfig);
+    if (modelConfig.provider === "cloudflare") {
+        return createCloudflareModel(modelConfig);
     }
 
     throw new AiServiceError("Unsupported model provider.", 500);
@@ -220,17 +221,21 @@ function formatError(error, modelConfig = null) {
 
     const message = String(error?.message || "");
 
-    if (modelConfig?.provider === "ollama") {
+    if (modelConfig?.provider === "cloudflare") {
         if (
-            message.includes("ECONNREFUSED") ||
-            message.includes("fetch failed") ||
-            message.includes("connection refused")
+            /401|403|authentication|authorization|api token|unauthorized|forbidden/i.test(message)
         ) {
-            return new AiServiceError("Ollama is not running. Start Ollama and try again.", 502);
+            return new AiServiceError(
+                "Cloudflare API token is not working. Check CLOUDFLARE_API_TOKEN.",
+                502
+            );
         }
 
-        if (message.includes("model") && message.includes("not found")) {
-            return new AiServiceError(`Pull ${modelConfig.model} in Ollama first, then try again.`, 502);
+        if (/account/i.test(message) && /not found|invalid|unknown/i.test(message)) {
+            return new AiServiceError(
+                "Cloudflare account ID is not working. Check CLOUDFLARE_ACCOUNT_ID.",
+                502
+            );
         }
     }
 

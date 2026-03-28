@@ -8,8 +8,14 @@ function DashboardWelcome({
   avatarLabel,
   chatModels,
   draft,
+  isListeningToVoice,
   isSidebarOpen,
   isStreaming,
+  isVoiceInputSupported,
+  isVoicePlaybackSupported,
+  isVoiceReplyEnabled,
+  isVoiceSpeaking,
+  isVoiceTranscribing,
   mode,
   onChange,
   onMenuToggle,
@@ -17,9 +23,12 @@ function DashboardWelcome({
   onModelChange,
   onSubmit,
   onSuggestionClick,
+  onVoiceInputToggle,
+  onVoiceReplyToggle,
   selectedModel,
   statusError,
   username,
+  voiceStatus,
 }) {
   return (
     <div className="dashboard-shell">
@@ -45,13 +54,22 @@ function DashboardWelcome({
         <PromptComposer
           chatModels={chatModels}
           draft={draft}
+          isListening={isListeningToVoice}
           isSending={isStreaming}
+          isVoiceInputSupported={isVoiceInputSupported}
+          isVoicePlaybackSupported={isVoicePlaybackSupported}
+          isVoiceReplyEnabled={isVoiceReplyEnabled}
+          isVoiceSpeaking={isVoiceSpeaking}
+          isVoiceTranscribing={isVoiceTranscribing}
           mode={mode}
           onChange={onChange}
           onModeChange={onModeChange}
           onModelChange={onModelChange}
           onSubmit={onSubmit}
+          onVoiceInputToggle={onVoiceInputToggle}
+          onVoiceReplyToggle={onVoiceReplyToggle}
           selectedModel={selectedModel}
+          voiceStatus={voiceStatus}
         />
 
         <SuggestionGrid onSuggestionClick={onSuggestionClick} suggestions={suggestionPrompts} />

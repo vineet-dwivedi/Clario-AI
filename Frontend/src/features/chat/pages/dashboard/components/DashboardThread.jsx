@@ -8,8 +8,14 @@ function DashboardThread({
   chatModels,
   conversationEndRef,
   draft,
+  isListeningToVoice,
   isSidebarOpen,
   isStreaming,
+  isVoiceInputSupported,
+  isVoicePlaybackSupported,
+  isVoiceReplyEnabled,
+  isVoiceSpeaking,
+  isVoiceTranscribing,
   messages,
   mode,
   onChange,
@@ -18,10 +24,13 @@ function DashboardThread({
   onModelChange,
   onStartNewThread,
   onSubmit,
+  onVoiceInputToggle,
+  onVoiceReplyToggle,
   selectedModel,
   statusError,
   threadTitle,
   username,
+  voiceStatus,
 }) {
   return (
     <div className="dashboard-thread-page">
@@ -56,13 +65,22 @@ function DashboardThread({
           chatModels={chatModels}
           docked
           draft={draft}
+          isListening={isListeningToVoice}
           isSending={isStreaming}
+          isVoiceInputSupported={isVoiceInputSupported}
+          isVoicePlaybackSupported={isVoicePlaybackSupported}
+          isVoiceReplyEnabled={isVoiceReplyEnabled}
+          isVoiceSpeaking={isVoiceSpeaking}
+          isVoiceTranscribing={isVoiceTranscribing}
           mode={mode}
           onChange={onChange}
           onModeChange={onModeChange}
           onModelChange={onModelChange}
           onSubmit={onSubmit}
+          onVoiceInputToggle={onVoiceInputToggle}
+          onVoiceReplyToggle={onVoiceReplyToggle}
           selectedModel={selectedModel}
+          voiceStatus={voiceStatus}
         />
       </main>
     </div>

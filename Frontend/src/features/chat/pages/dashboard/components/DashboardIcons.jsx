@@ -78,6 +78,26 @@ export function ImageIcon({ className }) {
   )
 }
 
+export function VolumeIcon({ className }) {
+  return (
+    <svg aria-hidden="true" className={className} {...iconProps}>
+      <path d="M5.5 14.5V9.5C5.5 8.95 5.95 8.5 6.5 8.5H9.1L12.9 5.5V18.5L9.1 15.5H6.5C5.95 15.5 5.5 15.05 5.5 14.5Z" />
+      <path d="M16 9.25C17 10.05 17.6 11 17.6 12C17.6 13 17 13.95 16 14.75" />
+      <path d="M17.7 6.9C19.4 8.3 20.4 10.05 20.4 12C20.4 13.95 19.4 15.7 17.7 17.1" />
+    </svg>
+  )
+}
+
+export function VolumeOffIcon({ className }) {
+  return (
+    <svg aria-hidden="true" className={className} {...iconProps}>
+      <path d="M5.5 14.5V9.5C5.5 8.95 5.95 8.5 6.5 8.5H9.1L12.9 5.5V18.5L9.1 15.5H6.5C5.95 15.5 5.5 15.05 5.5 14.5Z" />
+      <path d="M16 10L20 14" />
+      <path d="M20 10L16 14" />
+    </svg>
+  )
+}
+
 export function OrbitIcon({ className }) {
   return (
     <svg aria-hidden="true" className={className} {...iconProps}>

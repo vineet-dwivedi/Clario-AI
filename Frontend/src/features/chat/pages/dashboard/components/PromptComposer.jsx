@@ -1,23 +1,35 @@
 import React, { useEffect, useRef } from 'react'
 import { SparkleIcon } from '../../../../auth/components/AuthIcons'
 import { COMPOSER_MODE } from '../constants'
-import { ArrowRightIcon, ImageIcon, MicIcon, SearchIcon } from './DashboardIcons'
+import { ArrowRightIcon, ImageIcon, MicIcon, SearchIcon, VolumeIcon, VolumeOffIcon } from './DashboardIcons'
 
 function PromptComposer({
   chatModels = [],
   draft,
+  isListening = false,
   isSending,
+  isVoiceInputSupported = false,
+  isVoicePlaybackSupported = false,
+  isVoiceReplyEnabled = true,
+  isVoiceSpeaking = false,
+  isVoiceTranscribing = false,
   mode,
   onChange,
   onModeChange,
   onModelChange,
   onSubmit,
+  onVoiceInputToggle,
+  onVoiceReplyToggle,
   selectedModel = '',
+  voiceStatus = '',
   docked = false,
 }) {
   const formRef = useRef(null)
   const textareaRef = useRef(null)
   const maxTextareaHeight = 220
+  const voiceStatusClassName = `dashboard-composer__voice-status${
+    voiceStatus && !isListening && !isVoiceSpeaking ? ' dashboard-composer__voice-status--error' : ''
+  }`
 
   const updateDockedHeight = () => {
     if (!docked || !formRef.current) {
@@ -158,9 +170,45 @@ function PromptComposer({
 
       <div className="dashboard-composer__footer">
         <div className="dashboard-composer__controls">
-          <button aria-label="Voice input" className="dashboard-composer__icon-button" type="button">
+          <button
+            aria-label={isListening ? 'Stop voice input' : 'Start voice input'}
+            aria-pressed={isListening}
+            className={`dashboard-composer__icon-button${
+              isListening ? ' dashboard-composer__icon-button--active' : ''
+            }`}
+            disabled={(!isVoiceInputSupported && !isListening) || isVoiceTranscribing}
+            onClick={onVoiceInputToggle}
+            title={isVoiceInputSupported ? 'Voice input' : 'Voice input works in supported browsers like Chrome or Edge'}
+            type="button"
+          >
             <MicIcon className="dashboard-composer__icon" />
           </button>
+
+          {mode === COMPOSER_MODE.CHAT ? (
+            <button
+              aria-label={isVoiceReplyEnabled ? 'Turn voice replies off' : 'Turn voice replies on'}
+              aria-pressed={isVoiceReplyEnabled}
+              className={`dashboard-composer__icon-button${
+                isVoiceReplyEnabled ? ' dashboard-composer__icon-button--active' : ''
+              }`}
+              disabled={!isVoicePlaybackSupported}
+              onClick={onVoiceReplyToggle}
+              title={
+                isVoicePlaybackSupported
+                  ? isVoiceReplyEnabled
+                    ? 'Voice replies are on'
+                    : 'Voice replies are off'
+                  : 'Voice replies are not available in this browser'
+              }
+              type="button"
+            >
+              {isVoiceReplyEnabled ? (
+                <VolumeIcon className="dashboard-composer__icon" />
+              ) : (
+                <VolumeOffIcon className="dashboard-composer__icon" />
+              )}
+            </button>
+          ) : null}
 
           <button
             aria-label={mode === COMPOSER_MODE.IMAGE ? 'Generate image' : 'Send question'}
@@ -172,6 +220,16 @@ function PromptComposer({
           </button>
         </div>
       </div>
+
+      {voiceStatus ? (
+        <p
+          aria-live="polite"
+          className={voiceStatusClassName}
+          role={voiceStatusClassName.includes('--error') ? 'alert' : 'status'}
+        >
+          {voiceStatus}
+        </p>
+      ) : null}
     </form>
   )
 }
