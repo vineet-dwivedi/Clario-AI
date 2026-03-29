@@ -14,7 +14,11 @@ const AuthCard = ({
   footerLinkLabel,
   footerLinkTo,
   footerText,
+  googleLabel = 'Continue with Google',
+  googleLoadingLabel = 'Opening Google...',
+  isGoogleLoading = false,
   onFieldChange,
+  onGoogleClick,
   onSubmit,
   statusMessage,
   statusTone = 'info',
@@ -86,9 +90,9 @@ const AuthCard = ({
             <span>Or continue with</span>
           </div>
 
-          <button className="auth-social" type="button">
+          <button className="auth-social" disabled={disabled || isGoogleLoading} onClick={onGoogleClick} type="button">
             <GoogleIcon className="auth-social__icon" />
-            <span>Google</span>
+            <span>{isGoogleLoading ? googleLoadingLabel : googleLabel}</span>
           </button>
         </form>
 

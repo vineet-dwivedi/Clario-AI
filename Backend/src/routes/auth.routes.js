@@ -1,6 +1,8 @@
 import { Router } from "express";
 import {
     getme,
+    googleAuthCallback,
+    googleAuthStart,
     login,
     logout,
     register,
@@ -15,6 +17,8 @@ const authRouter = Router();
 
 authRouter.post("/register", registerValidator, register);
 authRouter.post("/login", loginValidator, login);
+authRouter.get("/google", googleAuthStart);
+authRouter.get("/google/callback", googleAuthCallback);
 authRouter.get("/verify-email", verifyEmail);
 authRouter.get("/get-me", authUser, getme);
 authRouter.put("/profile", authUser, profileUpload.single("avatar"), updateProfile);

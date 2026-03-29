@@ -7,6 +7,7 @@ import {
     sendImageMessage,
     sendMessage,
     sendStreamMessage,
+    updateSavedChat,
     transcribeVoiceMessage
 } from "../controllers/chat.controller.js";
 import { authUser } from "../middleware/auth.middleware.js";
@@ -20,6 +21,7 @@ chatRouter.get("/", getChats);
 chatRouter.get("/models", getModels);
 chatRouter.get("/:chatId/messages", getChatMessages);
 chatRouter.delete("/:chatId", deleteChat);
+chatRouter.patch("/:chatId/save", updateSavedChat);
 chatRouter.post(
     "/voice/transcribe",
     express.raw({

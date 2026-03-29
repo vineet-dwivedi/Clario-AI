@@ -67,6 +67,11 @@ export async function deleteChat(chatId) {
   return response.data
 }
 
+export async function updateChatSaveStatus(chatId, isSaved) {
+  const response = await api.patch(`/api/chats/${chatId}/save`, { isSaved })
+  return response.data
+}
+
 export async function getModels() {
   const response = await api.get('/api/chats/models')
   return response.data

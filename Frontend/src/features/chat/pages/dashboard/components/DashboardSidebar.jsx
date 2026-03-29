@@ -5,7 +5,6 @@ import { ChatIcon, CloseIcon, LogoutIcon, PlusIcon, TrashIcon } from './Dashboar
 function DashboardSidebar({
   avatar,
   avatarLabel,
-  chats,
   currentChatId,
   deletingChatId,
   isDeleting,
@@ -18,8 +17,44 @@ function DashboardSidebar({
   onNewThread,
   onOpenProfile,
   onSelectChat,
+  recentChats,
+  savedChats,
   username,
 }) {
+  function renderChatList(chatItems, emptyMessage) {
+    if (isLoading && !chatItems.length) {
+      return <p className="dashboard-sidebar__note">Loading chats...</p>
+    }
+
+    if (!chatItems.length) {
+      return <p className="dashboard-sidebar__note">{emptyMessage}</p>
+    }
+
+    return chatItems.map((chat) => (
+      <div className="dashboard-thread-item" key={chat.id}>
+        <button
+          className={`dashboard-thread-link${chat.id === currentChatId ? ' dashboard-thread-link--active' : ''}`}
+          onClick={() => onSelectChat(chat.id)}
+          type="button"
+        >
+          <ChatIcon className="dashboard-thread-link__icon" />
+          <span className="dashboard-thread-link__label">{chat.title}</span>
+        </button>
+
+        <button
+          aria-label={`Delete ${chat.title}`}
+          className="dashboard-thread-item__delete"
+          disabled={isDeleting || deletingChatId === chat.id}
+          onClick={(event) => onDeleteChat(event, chat.id)}
+          title="Delete chat"
+          type="button"
+        >
+          <TrashIcon className="dashboard-thread-item__delete-icon" />
+        </button>
+      </div>
+    ))
+  }
+
   return (
     <aside className={`dashboard-sidebar${isSidebarOpen ? ' dashboard-sidebar--open' : ''}`}>
       <div className="dashboard-sidebar__header">
@@ -46,36 +81,12 @@ function DashboardSidebar({
       </button>
 
       <div className="dashboard-sidebar__section">
+        <p className="dashboard-sidebar__label">Saved</p>
+        <div className="dashboard-sidebar__threads">{renderChatList(savedChats, 'No saved chats yet.')}</div>
+
         <p className="dashboard-sidebar__label">Recent</p>
 
-        <div className="dashboard-sidebar__threads">
-          {isLoading && chats.length === 0 ? <p className="dashboard-sidebar__note">Loading chats...</p> : null}
-          {!isLoading && chats.length === 0 ? <p className="dashboard-sidebar__note">No chats yet.</p> : null}
-
-          {chats.map((chat) => (
-            <div className="dashboard-thread-item" key={chat.id}>
-              <button
-                className={`dashboard-thread-link${chat.id === currentChatId ? ' dashboard-thread-link--active' : ''}`}
-                onClick={() => onSelectChat(chat.id)}
-                type="button"
-              >
-                <ChatIcon className="dashboard-thread-link__icon" />
-                <span className="dashboard-thread-link__label">{chat.title}</span>
-              </button>
-
-              <button
-                aria-label={`Delete ${chat.title}`}
-                className="dashboard-thread-item__delete"
-                disabled={isDeleting || deletingChatId === chat.id}
-                onClick={(event) => onDeleteChat(event, chat.id)}
-                title="Delete chat"
-                type="button"
-              >
-                <TrashIcon className="dashboard-thread-item__delete-icon" />
-              </button>
-            </div>
-          ))}
-        </div>
+        <div className="dashboard-sidebar__threads">{renderChatList(recentChats, 'No recent chats yet.')}</div>
       </div>
 
       <div className="dashboard-sidebar__footer">

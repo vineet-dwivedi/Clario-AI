@@ -1,10 +1,14 @@
-import React, { useMemo, useState } from 'react'
-import { copyText, downloadConversationPdf, downloadTextFile, formatConversationText } from '../helpers'
+import React, { useEffect, useMemo, useState } from 'react'
+import { copyText, downloadConversationPdf, formatConversationText } from '../helpers'
 import { CopyIcon, DownloadIcon, SaveIcon } from './DashboardIcons'
 
-function ChatActionsBar({ messages, threadTitle }) {
+function ChatActionsBar({ isSaved, messages, onSaveToggle, threadTitle }) {
   const [status, setStatus] = useState('')
   const transcript = useMemo(() => formatConversationText(messages, threadTitle), [messages, threadTitle])
+
+  useEffect(() => {
+    setStatus('')
+  }, [threadTitle])
 
   async function handleCopy() {
     try {
@@ -15,9 +19,19 @@ function ChatActionsBar({ messages, threadTitle }) {
     }
   }
 
-  function handleSave() {
-    downloadTextFile(threadTitle || 'clario-ai-chat', transcript)
-    setStatus('Chat saved as text.')
+  async function handleSave() {
+    try {
+      const didUpdate = await onSaveToggle?.()
+
+      if (!didUpdate) {
+        setStatus('Could not update saved chats right now.')
+        return
+      }
+
+      setStatus(isSaved ? 'Chat removed from saved chats.' : 'Chat saved in the menu.')
+    } catch {
+      setStatus('Could not update saved chats right now.')
+    }
   }
 
   function handleDownloadPdf() {
@@ -33,9 +47,13 @@ function ChatActionsBar({ messages, threadTitle }) {
           <span>Copy</span>
         </button>
 
-        <button className="dashboard-chat-actions__button" onClick={handleSave} type="button">
+        <button
+          className={`dashboard-chat-actions__button${isSaved ? ' dashboard-chat-actions__button--active' : ''}`}
+          onClick={handleSave}
+          type="button"
+        >
           <SaveIcon className="dashboard-chat-actions__icon" />
-          <span>Save</span>
+          <span>{isSaved ? 'Saved' : 'Save'}</span>
         </button>
 
         <button className="dashboard-chat-actions__button" onClick={handleDownloadPdf} type="button">

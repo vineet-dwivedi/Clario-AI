@@ -9,6 +9,7 @@ import {
   fetchChatMessages,
   fetchChats,
   setCurrentChatId,
+  toggleSavedChatStatus,
 } from '../../chat.slice'
 import { generateImage, getModels, streamMessage } from '../../service/chat.api'
 import { COMPOSER_MODE } from './constants'
@@ -80,6 +81,14 @@ function buildPendingImages(fileEntries) {
 
 function isSupportedAttachment(file) {
   return String(file?.type || '').startsWith('image/') || String(file?.type || '') === 'application/pdf'
+}
+
+function sortChatsByDate(chatItems, primaryKey) {
+  return [...chatItems].sort((left, right) => {
+    const leftTime = new Date(left?.[primaryKey] || left?.updatedAt || left?.createdAt || 0).getTime()
+    const rightTime = new Date(right?.[primaryKey] || right?.updatedAt || right?.createdAt || 0).getTime()
+    return rightTime - leftTime
+  })
 }
 
 export function useDashboardPage() {
@@ -187,6 +196,14 @@ export function useDashboardPage() {
 
   const activeChat = chats.find((chat) => chat.id === currentChatId) || null
   const activeMessages = currentChatId ? messagesByChatId[currentChatId] || [] : []
+  const savedChats = sortChatsByDate(
+    chats.filter((chat) => chat.isSaved),
+    'savedAt',
+  )
+  const recentChats = sortChatsByDate(
+    chats.filter((chat) => !chat.isSaved),
+    'updatedAt',
+  )
   const isStreaming = Boolean(streamState?.isStreaming)
   const hasActiveThread = Boolean(currentChatId || streamState)
   const username = user?.username?.trim() || 'Clario AI User'
@@ -194,6 +211,8 @@ export function useDashboardPage() {
   const nextTheme = theme === 'light' ? 'dark' : 'light'
   const statusError = streamError || error
   const threadTitle = activeChat?.title || streamState?.title || 'New Chat'
+  const activeChatId = activeChat?.id || streamState?.chat?.id || currentChatId || ''
+  const isCurrentChatSaved = Boolean(activeChat?.isSaved)
   const visibleMessages = buildVisibleMessages(activeMessages, streamState, isStreaming)
   const canSubmit = composerMode === COMPOSER_MODE.IMAGE ? Boolean(draft.trim()) : Boolean(draft.trim() || selectedFiles.length)
   const voiceStatus = voiceError
@@ -431,6 +450,21 @@ export function useDashboardPage() {
     } finally {
       setDeletingChatId(null)
     }
+  }
+
+  async function handleSaveChatToggle() {
+    if (!activeChatId) {
+      return false
+    }
+
+    const result = await dispatch(
+      toggleSavedChatStatus({
+        chatId: activeChatId,
+        isSaved: !isCurrentChatSaved,
+      }),
+    )
+
+    return Boolean(result.meta?.requestStatus === 'fulfilled')
   }
 
   async function handleSubmit(event) {
@@ -709,9 +743,12 @@ export function useDashboardPage() {
     isSidebarOpen,
     isStreaming,
     isThemeTransitioning,
+    isCurrentChatSaved,
     isVoiceInputSupported,
     isVoiceTranscribing: isTranscribing,
     nextTheme,
+    recentChats,
+    savedChats,
     selectedChatModel,
     selectedFiles,
     statusError,
@@ -731,6 +768,7 @@ export function useDashboardPage() {
     handleProfileOpen,
     handleProfileSave,
     handleRemoveFile,
+    handleSaveChatToggle,
     handleSidebarClose,
     handleStartNewThread,
     handleSubmit,

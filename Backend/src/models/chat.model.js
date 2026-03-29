@@ -16,6 +16,14 @@ const chatSchema = new mongoose.Schema(
             default: 'New Chat',
             trim: true,
         },
+        isSaved: {
+            type: Boolean,
+            default: false,
+        },
+        savedAt: {
+            type: Date,
+            default: null,
+        },
     },
     { timestamps: true }
 );

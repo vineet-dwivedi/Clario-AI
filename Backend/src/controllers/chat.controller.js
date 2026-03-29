@@ -75,6 +75,8 @@ function formatChat(chat) {
     return {
         id: String(chat._id),
         title: chat.title,
+        isSaved: Boolean(chat.isSaved),
+        savedAt: chat.savedAt || null,
         createdAt: chat.createdAt,
         updatedAt: chat.updatedAt
     };
@@ -234,6 +236,28 @@ export async function deleteChat(req, res) {
         });
     } catch (error) {
         return sendError(res, error, "Failed to delete chat.");
+    }
+}
+
+export async function updateSavedChat(req, res) {
+    try {
+        const userId = getUserId(req);
+        const chat = await findChat(userId, req.params.chatId);
+        const isSaved = Boolean(req.body?.isSaved);
+
+        chat.isSaved = isSaved;
+        chat.savedAt = isSaved ? new Date() : null;
+        await chat.save();
+
+        return res.status(200).json({
+            success: true,
+            message: isSaved ? "Chat saved successfully" : "Chat removed from saved chats",
+            data: {
+                chat: formatChat(chat)
+            }
+        });
+    } catch (error) {
+        return sendError(res, error, "Failed to update saved chat.");
     }
 }
 

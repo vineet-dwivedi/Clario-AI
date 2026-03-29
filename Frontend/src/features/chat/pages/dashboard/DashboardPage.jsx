@@ -28,7 +28,6 @@ function DashboardPage() {
       <DashboardSidebar
         avatar={page.avatar}
         avatarLabel={page.avatarLabel}
-        chats={page.chats}
         currentChatId={page.currentChatId}
         deletingChatId={page.deletingChatId}
         isDeleting={page.isDeleting}
@@ -41,6 +40,8 @@ function DashboardPage() {
         onNewThread={page.handleStartNewThread}
         onOpenProfile={page.handleProfileOpen}
         onSelectChat={page.handleThreadSelect}
+        recentChats={page.recentChats}
+        savedChats={page.savedChats}
         username={page.username}
       />
 
@@ -55,6 +56,7 @@ function DashboardPage() {
           isListeningToVoice={page.isListeningToVoice}
           isSidebarOpen={page.isSidebarOpen}
           isStreaming={page.isStreaming}
+          isThreadSaved={page.isCurrentChatSaved}
           isVoiceInputSupported={page.isVoiceInputSupported}
           isVoiceTranscribing={page.isVoiceTranscribing}
           messages={page.visibleMessages}
@@ -66,6 +68,7 @@ function DashboardPage() {
           onModelChange={page.handleChatModelChange}
           onOpenProfile={page.handleProfileOpen}
           onRemoveFile={page.handleRemoveFile}
+          onSaveChat={page.handleSaveChatToggle}
           onStartNewThread={page.handleStartNewThread}
           onSubmit={page.handleSubmit}
           onVoiceInputToggle={page.handleVoiceInputToggle}

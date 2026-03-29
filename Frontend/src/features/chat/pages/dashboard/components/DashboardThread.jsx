@@ -14,6 +14,7 @@ function DashboardThread({
   isListeningToVoice,
   isSidebarOpen,
   isStreaming,
+  isThreadSaved,
   isVoiceInputSupported,
   isVoiceTranscribing,
   messages,
@@ -25,6 +26,7 @@ function DashboardThread({
   onModelChange,
   onOpenProfile,
   onRemoveFile,
+  onSaveChat,
   onStartNewThread,
   onSubmit,
   onVoiceInputToggle,
@@ -64,7 +66,14 @@ function DashboardThread({
 
             <ConversationList conversationEndRef={conversationEndRef} messages={messages} statusError={statusError} />
 
-            {messages.length ? <ChatActionsBar messages={messages} threadTitle={threadTitle} /> : null}
+            {messages.length ? (
+              <ChatActionsBar
+                isSaved={isThreadSaved}
+                messages={messages}
+                onSaveToggle={onSaveChat}
+                threadTitle={threadTitle}
+              />
+            ) : null}
           </div>
         </div>
 

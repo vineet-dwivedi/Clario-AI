@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import AuthCard from '../components/AuthCard'
 import { LockIcon, MailIcon, UserIcon } from '../components/AuthIcons'
@@ -8,8 +8,9 @@ import { useAuth } from '../hook/useAuth'
 
 // Register page handles small UI-only checks before calling the shared auth hook.
 const Register = () => {
+  const location = useLocation()
   const navigate = useNavigate()
-  const { handleRegister } = useAuth()
+  const { handleGoogleLogin, handleRegister } = useAuth()
   const { error, loading } = useSelector((state) => state.auth)
   const [formData, setFormData] = useState({
     username: '',
@@ -19,6 +20,8 @@ const Register = () => {
     terms: false,
   })
   const [localMessage, setLocalMessage] = useState('')
+  const [googleError, setGoogleError] = useState(new URLSearchParams(location.search).get('googleError') || '')
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
 
   const registerFields = [
     {
@@ -78,6 +81,10 @@ const Register = () => {
     if (localMessage) {
       setLocalMessage('')
     }
+
+    if (googleError) {
+      setGoogleError('')
+    }
   }
 
   const handleSubmit = async () => {
@@ -108,7 +115,13 @@ const Register = () => {
     }
   }
 
-  const statusMessage = localMessage || error
+  function handleGoogleClick() {
+    setIsGoogleLoading(true)
+    handleGoogleLogin('register')
+  }
+
+  const statusMessage = localMessage || error || googleError
+  const statusTone = statusMessage ? 'error' : 'info'
 
   return (
     <AuthCard
@@ -131,13 +144,17 @@ const Register = () => {
       footerLinkTo="/login"
       footerText="Already have an account?"
       onFieldChange={handleChange}
+      onGoogleClick={handleGoogleClick}
       onSubmit={handleSubmit}
       statusMessage={statusMessage}
-      statusTone="error"
+      statusTone={statusTone}
       submitLabel={loading ? 'Creating account...' : 'Create account'}
       subtitle="Create a secure profile and start your AI journey"
       title="Create account"
       disabled={loading}
+      googleLabel="Continue with Google"
+      googleLoadingLabel="Opening Google..."
+      isGoogleLoading={isGoogleLoading}
     />
   )
 }

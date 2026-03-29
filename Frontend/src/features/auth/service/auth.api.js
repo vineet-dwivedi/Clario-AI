@@ -60,3 +60,8 @@ export async function updateProfile({ username, avatarFile }) {
   const response = await api.put('/api/auth/profile', formData)
   return response.data
 }
+
+export function getGoogleAuthUrl(screen = 'login') {
+  const safeScreen = screen === 'register' ? 'register' : 'login'
+  return `${API_BASE_URL}/api/auth/google?screen=${safeScreen}`
+}

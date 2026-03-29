@@ -1486,6 +1486,12 @@
   }
 }
 
+.dashboard-chat-actions__button--active {
+  border-color: rgba(var(--accent-rgb), 0.24);
+  background: rgba(var(--accent-rgb), 0.09);
+  box-shadow: 0 18px 30px rgba(var(--accent-rgb), 0.14);
+}
+
 .dashboard-chat-actions__icon {
   width: 1rem;
   height: 1rem;

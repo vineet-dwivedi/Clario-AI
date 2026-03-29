@@ -5,6 +5,7 @@ import {
   getChatMessages,
   getChats,
   sendMessage,
+  updateChatSaveStatus as updateChatSaveStatusRequest,
 } from './service/chat.api'
 
 const getApiErrorMessage = (error, fallbackMessage) => {
@@ -85,6 +86,18 @@ export const deleteChatThread = createAsyncThunk('chat/deleteChatThread', async 
     return rejectWithValue(getApiErrorMessage(error, 'Failed to delete chat.'))
   }
 })
+
+export const toggleSavedChatStatus = createAsyncThunk(
+  'chat/toggleSavedChatStatus',
+  async ({ chatId, isSaved }, { rejectWithValue }) => {
+    try {
+      const response = await updateChatSaveStatusRequest(chatId, isSaved)
+      return response.data?.chat || null
+    } catch (error) {
+      return rejectWithValue(getApiErrorMessage(error, 'Failed to update saved chat.'))
+    }
+  },
+)
 
 const chatSlice = createSlice({
   name: 'chat',
@@ -179,6 +192,17 @@ const chatSlice = createSlice({
       .addCase(deleteChatThread.rejected, (state, action) => {
         state.isDeleting = false
         state.error = action.payload || 'Failed to delete chat.'
+      })
+      .addCase(toggleSavedChatStatus.pending, (state) => {
+        state.error = null
+      })
+      .addCase(toggleSavedChatStatus.fulfilled, (state, action) => {
+        if (action.payload?.id) {
+          state.chats = upsertChatInList(state.chats, action.payload)
+        }
+      })
+      .addCase(toggleSavedChatStatus.rejected, (state, action) => {
+        state.error = action.payload || 'Failed to update saved chat.'
       })
   },
 })

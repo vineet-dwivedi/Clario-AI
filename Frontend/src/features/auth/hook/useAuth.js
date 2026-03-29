@@ -1,5 +1,5 @@
 import { useDispatch } from 'react-redux'
-import { login, register, getme, logout, updateProfile } from '../service/auth.api'
+import { getGoogleAuthUrl, login, register, getme, logout, updateProfile } from '../service/auth.api'
 import { setUser, setError, setInitialized, setLoading } from '../auth.slice'
 
 const AUTH_SESSION_KEY = 'clario_ai_has_session'
@@ -34,6 +34,29 @@ const clearSessionHint = () => {
 }
 
 const hasSessionHint = () => getStorage()?.getItem(AUTH_SESSION_KEY) === 'true'
+
+const hasGoogleAuthFlag = () => {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  return new URLSearchParams(window.location.search).get('google') === '1'
+}
+
+const clearGoogleAuthFlag = () => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const url = new URL(window.location.href)
+
+  if (!url.searchParams.has('google')) {
+    return
+  }
+
+  url.searchParams.delete('google')
+  window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`)
+}
 
 /**
  * Login currently returns `userrname` while other endpoints use `username`.
@@ -109,6 +132,7 @@ export function useAuth() {
       const data = await getme()
       saveSessionHint()
       dispatch(setUser(normalizeUser(data.user)))
+      clearGoogleAuthFlag()
       return data
     } catch (error) {
       clearSessionHint()
@@ -130,7 +154,7 @@ export function useAuth() {
    * Logged-out visitors skip the backend call, while returning users still refresh from the server.
    */
   async function handleAppStart() {
-    if (!hasSessionHint()) {
+    if (!hasSessionHint() && !hasGoogleAuthFlag()) {
       dispatch(setError(null))
       dispatch(setUser(null))
       dispatch(setLoading(false))
@@ -184,5 +208,13 @@ export function useAuth() {
     }
   }
 
-  return { handleAppStart, handleGetme, handleLogin, handleLogout, handleRegister, handleUpdateProfile }
+  function handleGoogleLogin(screen = 'login') {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    window.location.href = getGoogleAuthUrl(screen)
+  }
+
+  return { handleAppStart, handleGetme, handleGoogleLogin, handleLogin, handleLogout, handleRegister, handleUpdateProfile }
 }

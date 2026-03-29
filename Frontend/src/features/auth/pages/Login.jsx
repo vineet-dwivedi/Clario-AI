@@ -10,13 +10,15 @@ import { useAuth } from '../hook/useAuth'
 const Login = () => {
   const location = useLocation()
   const navigate = useNavigate()
-  const { handleLogin } = useAuth()
+  const { handleGoogleLogin, handleLogin } = useAuth()
   const { error, loading, user } = useSelector((state) => state.auth)
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   })
   const [successMessage, setSuccessMessage] = useState(location.state?.successMessage || '')
+  const [googleError, setGoogleError] = useState(new URLSearchParams(location.search).get('googleError') || '')
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
 
   const loginFields = [
     {
@@ -54,6 +56,10 @@ const Login = () => {
     if (successMessage) {
       setSuccessMessage('')
     }
+
+    if (googleError) {
+      setGoogleError('')
+    }
   }
 
   const handleSubmit = async () => {
@@ -67,8 +73,13 @@ const Login = () => {
     }
   }
 
-  const statusMessage = error || successMessage || (user ? 'You are logged in.' : '')
-  const statusTone = error ? 'error' : 'success'
+  function handleGoogleClick() {
+    setIsGoogleLoading(true)
+    handleGoogleLogin('login')
+  }
+
+  const statusMessage = error || googleError || successMessage || (user ? 'You are logged in.' : '')
+  const statusTone = error || googleError ? 'error' : 'success'
 
 
   return (
@@ -90,6 +101,7 @@ const Login = () => {
       footerLinkTo="/register"
       footerText="Don't have an account?"
       onFieldChange={handleChange}
+      onGoogleClick={handleGoogleClick}
       onSubmit={handleSubmit}
       statusMessage={statusMessage}
       statusTone={statusTone}
@@ -97,6 +109,9 @@ const Login = () => {
       subtitle="Sign in to continue your AI journey"
       title="Welcome back"
       disabled={loading}
+      googleLabel="Sign in with Google"
+      googleLoadingLabel="Opening Google..."
+      isGoogleLoading={isGoogleLoading}
     />
   )
 }
