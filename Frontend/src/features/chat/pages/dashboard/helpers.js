@@ -1,19 +1,4 @@
-import { STORAGE_KEY } from './constants'
 import { jsPDF } from 'jspdf'
-
-export function getInitialTheme() {
-  if (typeof window === 'undefined') {
-    return 'light'
-  }
-
-  const savedTheme = window.localStorage.getItem(STORAGE_KEY)
-
-  if (savedTheme === 'light' || savedTheme === 'dark') {
-    return savedTheme
-  }
-
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
 
 export function buildVisibleMessages(activeMessages, streamState, isStreaming) {
   const messages = [...activeMessages]

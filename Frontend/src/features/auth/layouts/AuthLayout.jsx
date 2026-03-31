@@ -2,23 +2,8 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 
 import { MoonIcon, SunIcon } from '../components/AuthIcons'
-
-const STORAGE_KEY = 'clario-ai-theme'
-
-// Read the saved theme first, then fall back to the user's system preference.
-const getInitialTheme = () => {
-  if (typeof window === 'undefined') {
-    return 'light'
-  }
-
-  const savedTheme = window.localStorage.getItem(STORAGE_KEY)
-
-  if (savedTheme === 'light' || savedTheme === 'dark') {
-    return savedTheme
-  }
-
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
+import { applyDocumentTheme, getInitialTheme } from '../../../utils/theme'
+import { useDynamicFavicon } from '../../../utils/useDynamicFavicon'
 
 // Shared layout for auth pages, including the theme toggle and transition overlay.
 const AuthLayout = () => {
@@ -26,10 +11,10 @@ const AuthLayout = () => {
   const [isThemeTransitioning, setIsThemeTransitioning] = useState(false)
   const transitionTimeoutRef = useRef(null)
 
+  useDynamicFavicon(theme)
+
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    document.documentElement.style.colorScheme = theme
-    window.localStorage.setItem(STORAGE_KEY, theme)
+    applyDocumentTheme(theme)
   }, [theme])
 
   useEffect(() => {

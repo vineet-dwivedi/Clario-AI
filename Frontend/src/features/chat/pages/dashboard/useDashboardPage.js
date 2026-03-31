@@ -13,8 +13,10 @@ import {
 } from '../../chat.slice'
 import { generateImage, getModels, streamMessage } from '../../service/chat.api'
 import { COMPOSER_MODE } from './constants'
-import { buildVisibleMessages, getAvatarLabel, getInitialTheme } from './helpers'
+import { buildVisibleMessages, getAvatarLabel } from './helpers'
 import { useVoiceAssistant } from './useVoiceAssistant'
+import { useDynamicFavicon } from '../../../../utils/useDynamicFavicon'
+import { applyDocumentTheme, getInitialTheme } from '../../../../utils/theme'
 
 function createFileEntry(file) {
   const isImage = String(file.type || '').startsWith('image/')
@@ -126,10 +128,11 @@ export function useDashboardPage() {
     voiceError,
   } = useVoiceAssistant()
 
+  // Update favicon dynamically when theme changes
+  useDynamicFavicon(theme)
+
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    document.documentElement.style.colorScheme = theme
-    window.localStorage.setItem('clario-ai-theme', theme)
+    applyDocumentTheme(theme)
   }, [theme])
 
   useEffect(() => {
