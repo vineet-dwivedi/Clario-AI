@@ -382,6 +382,5 @@ If Google sign-in is enabled, add these in Google Cloud Console:
 ## License And Author
 ## Vineet Dwivedi
 
-This project currently does not define a custom license at the repository root.
+This project is licensed under the [MIT License](./LICENSE).
 
-## Fully Authorized And Developed By Vineet Dwivedi.
