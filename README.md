@@ -383,3 +383,5 @@ If Google sign-in is enabled, add these in Google Cloud Console:
 ## Vineet Dwivedi
 
 This project currently does not define a custom license at the repository root.
+
+## Fully Authorized And Developed By Vineet Dwivedi.
