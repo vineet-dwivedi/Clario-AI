@@ -380,5 +380,6 @@ If Google sign-in is enabled, add these in Google Cloud Console:
 - [Frontend/vercel.json](Frontend/vercel.json)
 
 ## License And Author
-Vineet Dwivedi
+## Vineet Dwivedi
+
 This project currently does not define a custom license at the repository root.
